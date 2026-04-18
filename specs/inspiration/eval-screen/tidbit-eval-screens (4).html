@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tidbit — Evaluation Screens</title>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;1,400;1,500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --ink: #1a1714;
+  --ink-2: #4a453f;
+  --ink-3: #8a837a;
+  --ink-4: #c4bdb6;
+  --parchment: #f7f3ee;
+  --parchment-2: #ede7de;
+  --parchment-3: #e2d9ce;
+  --violet: #5b4fcf;
+  --violet-light: #ede9ff;
+  --violet-mid: #9b92e8;
+  --violet-dark: #3d3491;
+  --green: #3a7d5c;
+  --green-light: #e8f5ef;
+  --green-mid: #7abfa0;
+  --red: #c0392b;
+  --red-light: #fdecea;
+  --red-mid: #e8928c;
+  --amber: #d4862a;
+  --amber-light: #fdf0e0;
+  --font-serif: 'Lora', Georgia, serif;
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --radius: 14px;
+  --radius-sm: 8px;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: #1e1a16;
+  min-height: 100vh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 20px;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+
+.col { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.col-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #5a5048;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: center;
+  max-width: 200px;
+  line-height: 1.4;
+}
+
+.phone {
+  width: 300px;
+  border-radius: 40px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.06);
+  box-shadow: 0 24px 56px rgba(0,0,0,0.6);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Correct answer — green tint screen */
+.phone.correct { background: #f0faf5; }
+.phone.wrong { background: #fef5f4; }
+.phone.neutral { background: var(--parchment); }
+
+.status-bar {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 22px;
+  flex-shrink: 0;
+}
+.status-time { font-size: 13px; font-weight: 500; color: var(--ink); }
+.status-icons { display: flex; gap: 4px; align-items: center; }
+.sig { width: 13px; height: 10px; border: 1.5px solid var(--ink); border-radius: 1px; opacity: 0.5; }
+.bat { width: 18px; height: 10px; background: var(--ink); border-radius: 2px; opacity: 0.7; }
+
+/* Progress bar at top */
+.prog-bar-wrap { height: 3px; background: var(--parchment-3); flex-shrink: 0; }
+.prog-bar-fill { height: 3px; }
+.prog-bar-fill.green { background: var(--green); }
+.prog-bar-fill.violet { background: var(--violet); }
+.prog-bar-fill.red { background: var(--red); }
+
+/* Session nav */
+.session-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px 4px;
+  flex-shrink: 0;
+}
+.nav-exit { font-size: 13px; color: var(--ink-3); font-weight: 400; }
+.nav-count { font-size: 12px; color: var(--ink-3); }
+.nav-skip { font-size: 13px; color: var(--violet); font-weight: 500; }
+
+/* Exercise type badge */
+.ex-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px 12px;
+  flex-shrink: 0;
+}
+.ex-icon-sm {
+  width: 26px; height: 26px;
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.ex-icon-sm.violet { background: var(--violet-light); }
+.ex-icon-sm.green { background: var(--green-light); }
+.ex-badge-text { font-size: 13px; font-weight: 500; color: var(--ink-2); }
+.ex-badge-sub { font-size: 11px; color: var(--ink-3); }
+
+/* Exercise content area */
+.ex-content { flex: 1; padding: 4px 20px 0; }
+
+/* The poem line display */
+.poem-line-display {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-style: italic;
+  color: var(--ink);
+  line-height: 1.7;
+  margin-bottom: 16px;
+}
+.poem-line-display .blank-filled {
+  display: inline;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-style: italic;
+}
+.blank-filled.correct { background: #c5ecd8; color: #1a5c3a; }
+.blank-filled.wrong { background: #f5c4c0; color: #8b1a14; text-decoration: line-through; }
+.blank-filled.correction { background: #c5ecd8; color: #1a5c3a; }
+
+/* Inline eval drawer — slides up from bottom of exercise */
+.eval-drawer {
+  border-top: 1px solid;
+  padding: 16px 20px 0;
+  flex-shrink: 0;
+}
+.eval-drawer.correct { border-color: var(--green-mid); background: #e8f5ef; }
+.eval-drawer.wrong { border-color: var(--red-mid); background: #fdecea; }
+
+.eval-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.eval-icon {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.eval-icon.correct { background: var(--green); color: white; }
+.eval-icon.wrong { background: var(--red); color: white; }
+.eval-verdict {
+  font-size: 16px;
+  font-weight: 500;
+}
+.eval-verdict.correct { color: var(--green); }
+.eval-verdict.wrong { color: var(--red); }
+
+.eval-correction {
+  font-family: var(--font-serif);
+  font-size: 14px;
+  font-style: italic;
+  color: var(--ink-2);
+  line-height: 1.6;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+}
+.eval-correction.correct { background: #d4ede2; color: #1a5c3a; }
+.eval-correction.wrong { background: #f5d4d2; }
+.eval-correction .correct-answer { color: var(--green); font-weight: 500; }
+
+.eval-note {
+  font-size: 12px;
+  color: var(--ink-3);
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+.eval-note.correct { color: #4a8a6a; }
+.eval-note.wrong { color: #8a4a45; }
+
+/* Streak micro-moment */
+.streak-micro {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.streak-flame-sm {
+  width: 14px; height: 16px;
+  background: #EF9F27;
+  border-radius: 50% 50% 40% 40%;
+  flex-shrink: 0;
+}
+.streak-micro-text { font-size: 12px; color: #9a7a30; font-weight: 500; }
+
+/* Continue button */
+.continue-btn {
+  width: 100%;
+  border: none;
+  border-radius: var(--radius);
+  padding: 14px;
+  font-size: 15px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  margin-bottom: 20px;
+  letter-spacing: 0.01em;
+}
+.continue-btn.correct { background: var(--green); color: white; }
+.continue-btn.wrong { background: var(--red); color: white; }
+.continue-btn.neutral { background: var(--violet); color: white; }
+
+/* ── CONFIDENCE VARIANT ── */
+.confidence-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.conf-btn {
+  flex: 1;
+  border: 1px solid;
+  border-radius: var(--radius-sm);
+  padding: 10px 6px;
+  text-align: center;
+  cursor: pointer;
+}
+.conf-btn.easy { background: var(--green-light); border-color: var(--green-mid); }
+.conf-btn.okay { background: var(--amber-light); border-color: #e5b060; }
+.conf-btn.hard { background: var(--red-light); border-color: var(--red-mid); }
+.conf-label { font-size: 12px; font-weight: 500; }
+.conf-label.easy { color: var(--green); }
+.conf-label.okay { color: var(--amber); }
+.conf-label.hard { color: var(--red); }
+.conf-sub { font-size: 10px; color: var(--ink-3); margin-top: 2px; }
+
+/* ── PROGRESS MICRO ── */
+.pip-row {
+  display: flex;
+  gap: 3px;
+  padding: 8px 20px;
+  flex-shrink: 0;
+}
+.pip { flex: 1; height: 3px; border-radius: 1.5px; }
+.pip.done-correct { background: var(--green); }
+.pip.done-wrong { background: var(--red); }
+.pip.current { background: var(--violet-mid); }
+.pip.todo { background: var(--parchment-3); }
+
+/* Line context above exercise */
+.context-line {
+  font-family: var(--font-serif);
+  font-size: 13px;
+  font-style: italic;
+  color: var(--ink-3);
+  padding: 0 20px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.context-bar { width: 2px; border-radius: 1px; background: var(--parchment-3); flex-shrink: 0; margin-top: 2px; align-self: stretch; }
+
+/* Answer chips */
+.chip-grid { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
+.chip-opt {
+  padding: 8px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--parchment-3);
+  background: white;
+  font-size: 13px;
+  font-style: italic;
+  font-family: var(--font-serif);
+  color: var(--ink-2);
+}
+.chip-opt.selected-wrong { background: var(--red-light); border-color: var(--red-mid); color: var(--red); text-decoration: line-through; }
+.chip-opt.correct-answer { background: var(--green-light); border-color: var(--green-mid); color: var(--green); }
+
+/* Neutral — self-report */
+.self-report-label {
+  font-size: 12px;
+  color: var(--ink-3);
+  text-align: center;
+  margin-bottom: 10px;
+}
+</style>
+</head>
+<body>
+
+<!-- ══ SCREEN 1: CORRECT — INLINE DRAWER ══ -->
+<div class="col">
+  <div class="phone correct">
+    <div class="status-bar"><span class="status-time">9:41</span><div class="status-icons"><div class="sig"></div><div class="bat"></div></div></div>
+    <div class="prog-bar-wrap"><div class="prog-bar-fill green" style="width:18%"></div></div>
+    <div class="session-nav">
+      <span class="nav-exit">Exit</span>
+      <span class="nav-count">2 of 14</span>
+      <span class="nav-skip" style="opacity:0">Skip</span>
+    </div>
+    <div class="pip-row">
+      <div class="pip done-correct"></div>
+      <div class="pip current"></div>
+      <div class="pip todo"></div>
+      <div class="pip todo"></div>
+      <div class="pip todo"></div>
+      <div class="pip todo"></div>
+    </div>
+    <div class="ex-badge">
+      <div class="ex-icon-sm green">_</div>
+      <div>
+        <div class="ex-badge-text">Fill in the blank</div>
+        <div class="ex-badge-sub">Dickinson · Stanza 1</div>
+      </div>
+    </div>
+    <div class="ex-content">
+      <div style="font-size:12px;color:var(--ink-3);margin-bottom:10px">Complete the line:</div>
+      <div class="poem-line-display">
+        "We slowly drove — He knew no <span class="blank-filled correct">haste</span> —"
+      </div>
+      <div class="chip-grid">
+        <div class="chip-opt correct-answer">haste</div>
+        <div class="chip-opt" style="opacity:0.4">hurry</div>
+        <div class="chip-opt" style="opacity:0.4">rest</div>
+        <div class="chip-opt" style="opacity:0.4">time</div>
+      </div>
+    </div>
+    <div class="eval-drawer correct" style="margin-top:16px">
+      <div class="eval-header">
+        <div class="eval-icon correct">✓</div>
+        <div class="eval-verdict correct">That's it</div>
+      </div>
+      <div class="eval-correction correct">"We slowly drove — He knew no <span class="correct-answer">haste</span> —"</div>
+      <div class="eval-note correct">Death moves without urgency — the pace of the poem mirrors its subject.</div>
+      <div class="streak-micro">
+        <div class="streak-flame-sm"></div>
+        <span class="streak-micro-text">7 day streak · keep going</span>
+      </div>
+      <button class="continue-btn correct">Continue</button>
+    </div>
+  </div>
+  <div class="col-label">Correct — green tint + inline drawer, no modal</div>
+</div>
+
+<!-- ══ SCREEN 2: WRONG — INLINE DRAWER WITH CORRECTION ══ -->
+<div class="col">
+  <div class="phone wrong">
+    <div class="status-bar"><span class="status-time">9:41</span><div class="status-icons"><div class="sig"></div><div class="bat"></div></div></div>
+    <div class="prog-bar-wrap"><div class="prog-bar-fill red" style="width:18%"></div></div>
+    <div class="session-nav">
+      <span class="nav-exit">Exit</span>
+      <span class="nav-count">2 of 14</span>
+      <span class="nav-skip" style="opacity:0">Skip</span>
+    </div>
+    <div class="pip-row">
+      <div class="pip done-correct"></div>
+      <div class="pip done-wrong"></div>
+      <div class="pip todo"></div>
+      <div class="pip todo"></div>
+      <div class="pip todo"></div>
+      <div class="pip todo"></div>
+    </div>
+    <div class="ex-badge">
+      <div class="ex-icon-sm violet">_</div>
+      <div>
+        <div class="ex-badge-text">Fill in the blank</div>
+        <div class="ex-badge-sub">Dickinson · Stanza 1</div>
+      </div>
+    </div>
+    <div class="ex-content">
+      <div style="font-size:12px;color:var(--ink-3);margin-bottom:10px">Complete the line:</div>
+      <div class="poem-line-display">
+        "We slowly drove — He knew no <span class="blank-filled wrong">hurry</span> —"
+      </div>
+      <div class="chip-grid">
+        <div class="chip-opt selected-wrong">hurry</div>
+        <div class="chip-opt correct-answer">haste</div>
+        <div class="chip-opt" style="opacity:0.4">rest</div>
+        <div class="chip-opt" style="opacity:0.4">time</div>
+      </div>
+    </div>
+    <div class="eval-drawer wrong" style="margin-top:16px">
+      <div class="eval-header">
+        <div class="eval-icon wrong">✕</div>
+        <div class="eval-verdict wrong">Not quite</div>
+      </div>
+      <div class="eval-correction wrong">The word is <span style="color:var(--green);font-weight:500;font-style:italic">"haste"</span> — not <span style="color:var(--red);font-style:italic;text-decoration:line-through">"hurry"</span></div>
+      <div class="eval-note wrong">Dickinson's exact word matters — <em>haste</em> has a more archaic, weighted feel than <em>hurry</em>. This line comes back soon.</div>
+      <button class="continue-btn wrong">Got it</button>
+    </div>
+  </div>
+  <div class="col-label">Wrong — red tint, exact correction shown inline</div>
+</div>
+
+<!-- ══ SCREEN 3: LINE PROMPT — CORRECT ══ -->
+<div class="col">
+  <div class="phone correct">
+    <div class="status-bar"><span class="status-time">9:41</span><div class="status-icons"><div class="sig"></div><div class="bat"></div></div></div>
+    <div class="prog-bar-wrap"><div class="prog-bar-fill green" style="width:55%"></div></div>
+    <div class="session-nav">
+      <span class="nav-exit">Exit</span>
+      <span class="nav-count">4 of 6</span>
+      <span class="nav-skip" style="opacity:0">Skip</span>
+    </div>
+    <div class="pip-row">
+      <div class="pip done-correct"></div>
+      <div class="pip done-correct"></div>
+      <div class="pip done-wrong"></div>
+      <div class="pip current"></div>
+      <div class="pip todo"></div>
+      <div class="pip todo"></div>
+    </div>
+    <div class="ex-badge">
+      <div class="ex-icon-sm green">✍</div>
+      <div>
+        <div class="ex-badge-text">Line prompt</div>
+        <div class="ex-badge-sub">Dickinson · Stanza 1</div>
+      </div>
+    </div>
+    <div class="context-line">
+      <div class="context-bar"></div>
+      <span>"Because I could not stop for Death —"</span>
+    </div>
+    <div class="ex-content">
+      <div style="font-size:12px;color:var(--ink-3);margin-bottom:10px">Type the next line:</div>
+      <div style="background:white;border:1px solid var(--parchment-3);border-radius:var(--radius-sm);padding:12px;font-family:var(--font-serif);font-size:15px;font-style:italic;color:var(--green);line-height:1.6">
+        He kindly stopped for me —
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:6px;">
+        <span style="font-size:11px;color:var(--green);font-weight:500">✓ exact match</span>
+      </div>
+    </div>
+    <div class="eval-drawer correct" style="margin-top:12px">
+      <div class="eval-header">
+        <div class="eval-icon correct">✓</div>
+        <div class="eval-verdict correct">Perfect recall</div>
+      </div>
+      <div class="eval-correction correct">"He kindly stopped for me —"</div>
+      <div class="eval-note correct">Death as a gentleman caller — one of Dickinson's most striking inversions.</div>
+      <button class="continue-btn correct">Continue</button>
+    </div>
+  </div>
+  <div class="col-label">Line prompt correct — typed answer stays visible</div>
+</div>
+
+<!-- ══ SCREEN 4: SELF-REPORT (free recall / open answer) ══ -->
+<div class="col">
+  <div class="phone neutral">
+    <div class="status-bar"><span class="status-time">9:41</span><div class="status-icons"><div class="sig"></div><div class="bat"></div></div></div>
+    <div class="prog-bar-wrap"><div class="prog-bar-fill violet" style="width:72%"></div></div>
+    <div class="session-nav">
+      <span class="nav-exit">Exit</span>
+      <span class="nav-count">5 of 6</span>
+      <span class="nav-skip" style="opacity:0">Skip</span>
+    </div>
+    <div class="pip-row">
+      <div class="pip done-correct"></div>
+      <div class="pip done-correct"></div>
+      <div class="pip done-wrong"></div>
+      <div class="pip done-correct"></div>
+      <div class="pip current"></div>
+      <div class="pip todo"></div>
+    </div>
+    <div class="ex-badge">
+      <div class="ex-icon-sm violet">❄</div>
+      <div>
+        <div class="ex-badge-text">Cold open</div>
+        <div class="ex-badge-sub">Dickinson · Stanza 1</div>
+      </div>
+    </div>
+    <div class="ex-content">
+      <div style="font-size:12px;color:var(--ink-3);margin-bottom:12px">Recite the full stanza from memory:</div>
+      <div style="background:white;border:1px solid var(--parchment-3);border-radius:var(--radius-sm);padding:12px;font-family:var(--font-serif);font-size:14px;font-style:italic;color:var(--ink-2);line-height:1.8;min-height:100px">
+        Because I could not stop for Death —<br>
+        He kindly stopped for me —<br>
+        The Carriage held but just Ourselves —<br>
+        And Immortality.
+      </div>
+      <div style="margin-top:12px;background:var(--parchment-2);border-radius:var(--radius-sm);padding:10px 12px;">
+        <div style="font-size:11px;font-weight:500;color:var(--ink-3);margin-bottom:6px;letter-spacing:0.04em;text-transform:uppercase">Correct version</div>
+        <div style="font-family:var(--font-serif);font-size:13px;font-style:italic;color:var(--ink-2);line-height:1.8">
+          Because I could not stop for Death —<br>
+          He kindly stopped for me —<br>
+          The Carriage held but just Ourselves —<br>
+          And Immortality.
+        </div>
+      </div>
+      <div style="margin-top:14px">
+        <div class="self-report-label">How did you do?</div>
+        <div class="confidence-row">
+          <div class="conf-btn easy">
+            <div class="conf-label easy">Got it</div>
+            <div class="conf-sub">Word perfect</div>
+          </div>
+          <div class="conf-btn okay">
+            <div class="conf-label okay">Close</div>
+            <div class="conf-sub">Minor slip</div>
+          </div>
+          <div class="conf-btn hard">
+            <div class="conf-label hard">Missed</div>
+            <div class="conf-sub">Try again soon</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="padding: 0 20px 20px;">
+    </div>
+  </div>
+  <div class="col-label">Cold open — reveal + self-report confidence</div>
+</div>
+
+</body>
+</html>

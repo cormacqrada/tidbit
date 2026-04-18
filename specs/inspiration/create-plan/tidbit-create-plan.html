@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tidbit — Create Lesson Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;1,400;1,500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --ink: #1a1714;
+  --ink-2: #4a453f;
+  --ink-3: #8a837a;
+  --ink-4: #c4bdb6;
+  --parchment: #f7f3ee;
+  --parchment-2: #ede7de;
+  --parchment-3: #e2d9ce;
+  --violet: #5b4fcf;
+  --violet-light: #ede9ff;
+  --violet-mid: #9b92e8;
+  --amber: #d4862a;
+  --amber-light: #fdf0e0;
+  --green: #3a7d5c;
+  --green-light: #e8f5ef;
+  --red: #c0392b;
+  --red-light: #fdecea;
+  --radius: 14px;
+  --radius-sm: 8px;
+  --font-serif: 'Lora', Georgia, serif;
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: #2a2520;
+  min-height: 100vh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 20px;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+
+.device-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.device-label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  color: #7a6f65;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.phone {
+  width: 320px;
+  background: var(--parchment);
+  border-radius: 40px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 32px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(0,0,0,0.3);
+  position: relative;
+}
+
+.status-bar {
+  height: 44px;
+  background: var(--parchment);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px 0 20px;
+}
+
+.status-time { font-size: 13px; font-weight: 500; color: var(--ink); font-family: var(--font-sans); }
+.status-icons { display: flex; gap: 5px; align-items: center; }
+.status-icon { width: 14px; height: 10px; background: var(--ink); border-radius: 2px; opacity: 0.7; }
+.status-icon.signal { width: 12px; height: 10px; background: none; border: 1.5px solid var(--ink); border-radius: 1px; opacity: 0.6; }
+
+.screen-body { padding: 0 20px 32px; }
+
+/* ── STEP 1: SOURCE ── */
+.step-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 0 20px;
+}
+.step-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+}
+.step-dot.active { background: var(--violet); width: 20px; border-radius: 3px; }
+.step-dot.inactive { background: var(--parchment-3); }
+.step-label { font-size: 11px; color: var(--ink-3); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; margin-left: 2px; }
+
+.screen-title {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 400;
+  color: var(--ink);
+  line-height: 1.3;
+  margin-bottom: 6px;
+}
+.screen-sub {
+  font-size: 13px;
+  color: var(--ink-3);
+  line-height: 1.5;
+  margin-bottom: 24px;
+}
+
+.source-tabs {
+  display: flex;
+  background: var(--parchment-2);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  margin-bottom: 16px;
+  gap: 2px;
+}
+.source-tab {
+  flex: 1;
+  text-align: center;
+  padding: 7px 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-3);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.source-tab.active {
+  background: white;
+  color: var(--violet);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.paste-area {
+  background: white;
+  border: 1px solid var(--parchment-3);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  min-height: 130px;
+  font-family: var(--font-serif);
+  font-size: 14px;
+  font-style: italic;
+  color: var(--ink-2);
+  line-height: 1.7;
+  position: relative;
+  margin-bottom: 12px;
+}
+.paste-placeholder { color: var(--ink-4); }
+
+.detected-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--violet-light);
+  border: 1px solid var(--violet-mid);
+  border-radius: 20px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--violet);
+  margin-bottom: 16px;
+}
+.detected-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--violet); }
+
+.field-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-3);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.text-input {
+  width: 100%;
+  background: white;
+  border: 1px solid var(--parchment-3);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 14px;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  margin-bottom: 16px;
+}
+
+.url-input-wrap {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.url-input {
+  flex: 1;
+  background: white;
+  border: 1px solid var(--parchment-3);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--ink-3);
+  font-family: var(--font-sans);
+}
+.url-fetch-btn {
+  background: var(--ink);
+  color: var(--parchment);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.next-btn {
+  width: 100%;
+  background: var(--violet);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  padding: 15px;
+  font-size: 15px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  margin-top: 4px;
+  letter-spacing: 0.01em;
+}
+
+/* ── STEP 2: CONFIGURE ── */
+.section-divider {
+  height: 1px;
+  background: var(--parchment-3);
+  margin: 18px 0;
+}
+
+.config-row {
+  margin-bottom: 18px;
+}
+.config-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-3);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.config-label span { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--violet); font-size: 12px; }
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--parchment-3);
+  background: white;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.chip.selected {
+  background: var(--violet-light);
+  border-color: var(--violet-mid);
+  color: var(--violet);
+}
+.chip.selected-amber {
+  background: var(--amber-light);
+  border-color: #e5b060;
+  color: var(--amber);
+}
+
+.slider-wrap { position: relative; padding-bottom: 6px; }
+.slider-track {
+  width: 100%;
+  height: 4px;
+  background: var(--parchment-3);
+  border-radius: 2px;
+  position: relative;
+  margin-bottom: 6px;
+}
+.slider-fill {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--violet);
+  position: absolute;
+  top: 0; left: 0;
+}
+.slider-thumb {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--violet);
+  position: absolute;
+  top: -7px;
+  box-shadow: 0 1px 4px rgba(91,79,207,0.4);
+}
+.slider-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--ink-4);
+}
+
+.exercise-list { display: flex; flex-direction: column; gap: 8px; }
+.exercise-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: white;
+  border: 1px solid var(--parchment-3);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+.ex-icon {
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.ex-icon.violet { background: var(--violet-light); }
+.ex-icon.amber { background: var(--amber-light); }
+.ex-icon.green { background: var(--green-light); }
+.ex-icon.red { background: var(--red-light); }
+.ex-name { font-size: 13px; font-weight: 500; color: var(--ink); flex: 1; }
+.ex-sub { font-size: 11px; color: var(--ink-3); }
+.freq-dots { display: flex; gap: 3px; }
+.freq-dot { width: 6px; height: 6px; border-radius: 50%; }
+.freq-dot.on { background: var(--violet); }
+.freq-dot.off { background: var(--parchment-3); }
+.toggle-wrap { display: flex; align-items: center; }
+.toggle {
+  width: 32px; height: 18px;
+  border-radius: 9px;
+  position: relative;
+  cursor: pointer;
+}
+.toggle.on { background: var(--violet); }
+.toggle.off { background: var(--parchment-3); }
+.toggle-knob {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: white;
+  position: absolute;
+  top: 2px;
+  transition: left 0.15s;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+.toggle.on .toggle-knob { left: 16px; }
+.toggle.off .toggle-knob { left: 2px; }
+
+.mastery-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: white;
+  border: 1px solid var(--parchment-3);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.mastery-label { font-size: 13px; color: var(--ink); font-weight: 500; }
+.mastery-sub { font-size: 11px; color: var(--ink-3); }
+.mastery-val {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--violet);
+  font-family: var(--font-serif);
+}
+
+.generate-btn {
+  width: 100%;
+  background: var(--violet);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  padding: 15px;
+  font-size: 15px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  margin-top: 8px;
+  letter-spacing: 0.01em;
+}
+
+/* ── STEP 3: PROCESSING ── */
+.processing-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 0 20px;
+  text-align: center;
+}
+.processing-icon {
+  width: 64px; height: 64px;
+  border-radius: 18px;
+  background: var(--violet-light);
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 20px;
+  position: relative;
+}
+.processing-ring {
+  width: 72px; height: 72px;
+  border-radius: 50%;
+  border: 2px solid var(--parchment-3);
+  border-top-color: var(--violet);
+  position: absolute;
+  top: -4px; left: -4px;
+  animation: spin 1.2s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.processing-serif { font-family: var(--font-serif); font-size: 18px; font-weight: 400; color: var(--ink); margin-bottom: 6px; font-style: italic; }
+.processing-sub { font-size: 13px; color: var(--ink-3); line-height: 1.5; margin-bottom: 28px; }
+
+.progress-steps { width: 100%; }
+.prog-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--parchment-2);
+}
+.prog-step:last-child { border-bottom: none; }
+.prog-status {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px;
+}
+.prog-status.done { background: var(--green); color: white; }
+.prog-status.active { background: var(--violet-light); border: 2px solid var(--violet); }
+.prog-status.todo { background: var(--parchment-2); }
+.prog-step-label { font-size: 13px; color: var(--ink); font-weight: 400; }
+.prog-step-label.active { font-weight: 500; color: var(--violet); }
+.prog-step-label.done { color: var(--ink-3); }
+.prog-step-label.todo { color: var(--ink-4); }
+.prog-detail { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
+
+/* ── URL FETCHED STATE ── */
+.url-preview {
+  background: white;
+  border: 1px solid var(--parchment-3);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-bottom: 12px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.url-thumb {
+  width: 44px; height: 44px;
+  background: var(--violet-light);
+  border-radius: 6px;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+}
+.url-meta-title { font-size: 13px; font-weight: 500; color: var(--ink); line-height: 1.3; margin-bottom: 3px; }
+.url-meta-sub { font-size: 11px; color: var(--ink-3); }
+.url-word-count { font-size: 11px; color: var(--green); font-weight: 500; margin-top: 4px; }
+
+.nav-bar {
+  display: flex;
+  justify-content: space-around;
+  padding: 10px 0 6px;
+  border-top: 1px solid var(--parchment-3);
+  margin-top: 20px;
+  background: var(--parchment);
+}
+.nav-item { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.nav-pip { width: 18px; height: 3px; border-radius: 1.5px; }
+.nav-pip.active { background: var(--violet); }
+.nav-pip.inactive { background: var(--parchment-3); }
+.nav-lbl { font-size: 10px; color: var(--ink-4); }
+.nav-lbl.active { color: var(--violet); font-weight: 500; }
+</style>
+</head>
+<body>
+
+<!-- ── SCREEN 1: SOURCE SELECTION (text tab) ── -->
+<div class="device-wrapper">
+  <div class="phone">
+    <div class="status-bar">
+      <span class="status-time">9:41</span>
+      <div class="status-icons">
+        <div class="status-icon signal"></div>
+        <div class="status-icon" style="width:10px;height:10px;border-radius:50%;opacity:0.5"></div>
+        <div class="status-icon" style="width:18px;height:10px;border-radius:2px;opacity:0.8"></div>
+      </div>
+    </div>
+    <div class="screen-body">
+      <div class="step-indicator">
+        <div class="step-dot active"></div>
+        <div class="step-dot inactive"></div>
+        <div class="step-dot inactive"></div>
+        <span class="step-label">Source</span>
+      </div>
+      <div class="screen-title">What do you want to learn?</div>
+      <div class="screen-sub">Paste a poem, article, or paste a URL and we'll build your lesson.</div>
+
+      <div class="source-tabs">
+        <div class="source-tab active">Text</div>
+        <div class="source-tab">URL</div>
+        <div class="source-tab">File</div>
+        <div class="source-tab">Voice</div>
+      </div>
+
+      <div class="paste-area">
+        Because I could not stop for Death —<br>
+        He kindly stopped for me —<br>
+        The Carriage held but just Ourselves —<br>
+        And Immortality.
+      </div>
+
+      <div class="detected-pill">
+        <div class="detected-dot"></div>
+        Poem detected · 4 lines · English
+      </div>
+
+      <div class="field-label">Collection name</div>
+      <input class="text-input" value="Because I Could Not Stop for Death" readonly />
+
+      <button class="next-btn">Continue →</button>
+    </div>
+    <div class="nav-bar">
+      <div class="nav-item"><div class="nav-pip inactive"></div><span class="nav-lbl">Home</span></div>
+      <div class="nav-item"><div class="nav-pip active"></div><span class="nav-lbl active">Learn</span></div>
+      <div class="nav-item"><div class="nav-pip inactive"></div><span class="nav-lbl">Library</span></div>
+      <div class="nav-item"><div class="nav-pip inactive"></div><span class="nav-lbl">Profile</span></div>
+    </div>
+  </div>
+  <div class="device-label">Step 1 — paste text</div>
+</div>
+
+<!-- ── SCREEN 2: SOURCE (URL tab) ── -->
+<div class="device-wrapper">
+  <div class="phone">
+    <div class="status-bar">
+      <span class="status-time">9:41</span>
+      <div class="status-icons">
+        <div class="status-icon signal"></div>
+        <div class="status-icon" style="width:10px;height:10px;border-radius:50%;opacity:0.5"></div>
+        <div class="status-icon" style="width:18px;height:10px;border-radius:2px;opacity:0.8"></div>
+      </div>
+    </div>
+    <div class="screen-body">
+      <div class="step-indicator">
+        <div class="step-dot active"></div>
+        <div class="step-dot inactive"></div>
+        <div class="step-dot inactive"></div>
+        <span class="step-label">Source</span>
+      </div>
+      <div class="screen-title">What do you want to learn?</div>
+      <div class="screen-sub">Paste a poem, article, or paste a URL and we'll build your lesson.</div>
+
+      <div class="source-tabs">
+        <div class="source-tab">Text</div>
+        <div class="source-tab active">URL</div>
+        <div class="source-tab">File</div>
+        <div class="source-tab">Voice</div>
+      </div>
+
+      <div class="url-input-wrap">
+        <input class="url-input" value="poetryfoundation.org/poems/47652" readonly />
+        <button class="url-fetch-btn">Fetch</button>
+      </div>
+
+      <div class="url-preview">
+        <div class="url-thumb">📜</div>
+        <div>
+          <div class="url-meta-title">Because I could not stop for Death</div>
+          <div class="url-meta-sub">poetryfoundation.org · Emily Dickinson</div>
+          <div class="url-word-count">✓ 124 words extracted</div>
+        </div>
+      </div>
+
+      <div class="detected-pill">
+        <div class="detected-dot"></div>
+        Poem detected · 6 stanzas · English
+      </div>
+
+      <div class="field-label">Collection name</div>
+      <input class="text-input" value="Because I Could Not Stop for Death" readonly />
+
+      <button class="next-btn">Continue →</button>
+    </div>
+    <div class="nav-bar">
+      <div class="nav-item"><div class="nav-pip inactive"></div><span class="nav-lbl">Home</span></div>
+      <div class="nav-item"><div class="nav-pip active"></div><span class="nav-lbl active">Learn</span></div>
+      <div class="nav-item"><div class="nav-pip inactive"></div><span class="nav-lbl">Library</span></div>
+      <div class="nav-item"><div class="nav-pip inactive"></div><span class="nav-lbl">Profile</span></div>
+    </div>
+  </div>
+  <div class="device-label">Step 1 — URL fetch</div>
+</div>
+
+<!-- ── SCREEN 3: CONFIGURE ── -->
+<div class="device-wrapper">
+  <div class="phone">
+    <div class="status-bar">
+      <span class="status-time">9:41</span>
+      <div class="status-icons">
+        <div class="status-icon signal"></div>
+        <div class="status-icon" style="width:10px;height:10px;border-radius:50%;opacity:0.5"></div>
+        <div class="status-icon" style="width:18px;height:10px;border-radius:2px;opacity:0.8"></div>
+      </div>
+    </div>
+    <div class="screen-body">
+      <div class="step-indicator">
+        <div class="step-dot inactive"></div>
+        <div class="step-dot active"></div>
+        <div class="step-dot inactive"></div>
+        <span class="step-label">Configure</span>
+      </div>
+      <div class="screen-title">Shape your lesson</div>
+      <div class="screen-sub" style="margin-bottom:18px">Tell us how you want to learn this.</div>
+
+      <div class="config-row">
+        <div class="config-label">Learning goal</div>
+        <div class="chip-row">
+          <div class="chip selected">Memorize verbatim</div>
+          <div class="chip">Understand deeply</div>
+          <div class="chip">Key ideas</div>
+        </div>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <div class="config-row">
+        <div class="config-label">Session length <span>5 min</span></div>
+        <div class="chip-row">
+          <div class="chip">3 min</div>
+          <div class="chip selected">5 min</div>
+          <div class="chip">10 min</div>
+          <div class="chip">15 min</div>
+        </div>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <div class="config-row">
+        <div class="config-label">Difficulty ramp <span>Gradual</span></div>
+        <div class="slider-wrap">
+          <div class="slider-track">
+            <div class="slider-fill" style="width:25%"></div>
+            <div class="slider-thumb" style="left:calc(25% - 9px)"></div>
+          </div>
+          <div class="slider-labels">
+            <span>Gradual</span>
+            <span>Steep</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <div class="config-row">
+        <div class="config-label">Hint policy</div>
+        <div class="chip-row">
+          <div class="chip selected">Always</div>
+          <div class="chip">Once</div>
+          <div class="chip">Never</div>
+        </div>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <div class="config-row">
+        <div class="config-label">Modality</div>
+        <div class="chip-row">
+          <div class="chip">Tap only</div>
+          <div class="chip selected">Mixed</div>
+          <div class="chip">Type only</div>
+        </div>
+      </div>
+
+      <button class="next-btn">Continue →</button>
+    </div>
+    <div class="nav-bar">
+      <div class="nav-item"><div class="nav-pip inactive"></div><span class="nav-lbl">Home</span></div>
+      <div class="nav-item"><div class="nav-pip active"></div><span class="nav-lbl active">Learn</span></div>
+      <div class="nav-item"><div class="nav-pip inactive"></div><span class="nav-lbl">Library</span></div>
+      <div class="nav-item"><div class="nav-pip inactive"></div><span class="nav-lbl">Profile</span></div>
+    </div>
+  </div>
+  <div class="device-label">Step 2 — configure</div>
+</div>
+
+<!-- ── SCREEN 4: EXERCISE MIX ── -->
+<div class="device-wrapper">
+  <div class="phone">
+    <div class="status-bar">
+      <span class="status-time">9:41</span>
+      <div class="status-icons">
+        <div class="status-icon signal"></div>
+        <div class="status-icon" style="width:10px;height:10px;border-radius:50%;opacity:0.5"></div>
+        <div class="status-icon" style="width:18px;height:10px;border-radius:2px;opacity:0.8"></div>
+      </div>
+    </div>
+    <div class="screen-body">
+      <div class="step-indicator">
+        <div class="step-dot inactive"></div>
+        <div class="step-dot active"></div>
+        <div class="step-dot inactive"></div>
+        <span class="step-label">Exercises</span>
+      </div>
+      <div class="screen-title">Exercise mix</div>
+      <div class="screen-sub" style="margin-bottom:16px">Tuned for <em style="font-style:italic;color:var(--violet)">poem · memorize verbatim</em>. Adjust freely.</div>
+
+      <div class="exercise-list">
+
+        <div class="exercise-row">
+          <div class="ex-icon violet">✍</div>
+          <div style="flex:1">
+            <div class="ex-name">Line prompt</div>
+            <div class="ex-sub">Given prev. line, type next</div>
+          </div>
+          <div class="freq-dots">
+            <div class="freq-dot on"></div>
+            <div class="freq-dot on"></div>
+            <div class="freq-dot on"></div>
+            <div class="freq-dot on"></div>
+            <div class="freq-dot on"></div>
+          </div>
+        </div>
+
+        <div class="exercise-row">
+          <div class="ex-icon violet">_</div>
+          <div style="flex:1">
+            <div class="ex-name">Fill in the blank</div>
+            <div class="ex-sub">Tap missing word in line</div>
+          </div>
+          <div class="freq-dots">
+            <div class="freq-dot on"></div>
+            <div class="freq-dot on"></div>
+            <div class="freq-dot on"></div>
+            <div class="freq-dot on"></div>
+            <div class="freq-dot off"></div>
+          </div>
+        </div>
+
+        <div class="exercise-row">
+          <div class="ex-icon amber">⇅</div>
+          <div style="flex:1">
+            <div class="ex-name">Stanza reconstruct</div>
+            <div class="ex-sub">Reorder shuffled lines</div>
+          </div>
+          <div class="freq-dots">
+            <div class="freq-dot on"></div>
+            <div class="freq-dot on"></div>
+            <div class="freq-dot on"></div>
+            <div class="freq-dot off"></div>
+            <div class="freq-dot off"></div>
+          </div>
+        </div>
+
+        <div class="exercise-row">
+          <div class="ex-icon amber">❄</div>
+          <div style="flex:1">
+            <div class="ex-name">Cold open</div>
+            <div class="ex-sub">Title only → full stanza</div>
+          </div>
+          <div class="freq-dots">
+            <div class="freq-dot on"></div>
+            <div class="freq-dot on"></div>
+            <div class="freq-dot off"></div>
+            <div class="freq-dot off"></div>
+            <div class="freq-dot off"></div>
+          </div>
+        </div>
+
+        <div class="exercise-row" style="opacity:0.5">
+          <div class="ex-icon green">💬</div>
+          <div style="flex:1">
+            <div class="ex-name">Meaning probe</div>
+            <div class="ex-sub">Interpret a line or image</div>
+          </div>
+          <div class="toggle off">
+            <div class="toggle-knob"></div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:6px;padding:6px 0 0">
+          <div style="width:16px;height:16px;border-radius:4px;background:var(--violet-light);display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--violet);font-weight:700">AI</div>
+          <span style="font-size:11px;color:var(--ink-3)">Meaning probe requires a paid plan</span>
+        </div>
+
+      </div>
+
+      <button class="generate-btn" style="margin-top:20px">Generate lesson →</button>
+    </div>
+    <div class="nav-bar">
+      <div class="nav-item"><div class="nav-pip inactive"></div><span class="nav-lbl">Home</span></div>
+      <div class="nav-item"><div class="nav-pip active"></div><span class="nav-lbl active">Learn</span></div>
+      <div class="nav-item"><div class="nav-pip inactive"></div><span class="nav-lbl">Library</span></div>
+      <div class="nav-item"><div class="nav-pip inactive"></div><span class="nav-lbl">Profile</span></div>
+    </div>
+  </div>
+  <div class="device-label">Step 2b — exercise mix</div>
+</div>
+
+<!-- ── SCREEN 5: PROCESSING ── -->
+<div class="device-wrapper">
+  <div class="phone">
+    <div class="status-bar">
+      <span class="status-time">9:41</span>
+      <div class="status-icons">
+        <div class="status-icon signal"></div>
+        <div class="status-icon" style="width:10px;height:10px;border-radius:50%;opacity:0.5"></div>
+        <div class="status-icon" style="width:18px;height:10px;border-radius:2px;opacity:0.8"></div>
+      </div>
+    </div>
+    <div class="screen-body">
+      <div class="step-indicator">
+        <div class="step-dot inactive"></div>
+        <div class="step-dot inactive"></div>
+        <div class="step-dot active"></div>
+        <span class="step-label">Building</span>
+      </div>
+      <div class="processing-center">
+        <div class="processing-icon">
+          <div class="processing-ring"></div>
+          <span style="font-size:28px">📖</span>
+        </div>
+        <div class="processing-serif">Building your lesson…</div>
+        <div class="processing-sub">Parsing the poem and generating tidbits. This takes about 10 seconds.</div>
+      </div>
+
+      <div class="progress-steps">
+        <div class="prog-step">
+          <div class="prog-status done">✓</div>
+          <div>
+            <div class="prog-step-label done">Text extracted</div>
+            <div class="prog-detail">4 lines · 1 stanza detected</div>
+          </div>
+        </div>
+        <div class="prog-step">
+          <div class="prog-status done">✓</div>
+          <div>
+            <div class="prog-step-label done">Structure parsed</div>
+            <div class="prog-detail">Line breaks, stanza boundaries</div>
+          </div>
+        </div>
+        <div class="prog-step">
+          <div class="prog-status active"></div>
+          <div>
+            <div class="prog-step-label active">Generating tidbits</div>
+            <div class="prog-detail">3 of 4 complete…</div>
+          </div>
+        </div>
+        <div class="prog-step">
+          <div class="prog-status todo"></div>
+          <div>
+            <div class="prog-step-label todo">Building exercise queue</div>
+          </div>
+        </div>
+        <div class="prog-step" style="border-bottom:none">
+          <div class="prog-status todo"></div>
+          <div>
+            <div class="prog-step-label todo">Scheduling first session</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="nav-bar">
+      <div class="nav-item"><div class="nav-pip inactive"></div><span class="nav-lbl">Home</span></div>
+      <div class="nav-item"><div class="nav-pip active"></div><span class="nav-lbl active">Learn</span></div>
+      <div class="nav-item"><div class="nav-pip inactive"></div><span class="nav-lbl">Library</span></div>
+      <div class="nav-item"><div class="nav-pip inactive"></div><span class="nav-lbl">Profile</span></div>
+    </div>
+  </div>
+  <div class="device-label">Step 3 — processing</div>
+</div>
+
+</body>
+</html>
