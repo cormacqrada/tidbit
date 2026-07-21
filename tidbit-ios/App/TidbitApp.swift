@@ -5,6 +5,39 @@ import SwiftData
 struct TidbitApp: App {
     @AppStorage("appearanceMode") private var appearanceMode: String = "system"
     
+    let modelContainer: ModelContainer
+    
+    init() {
+        do {
+            modelContainer = try ModelContainer(
+                for: Lesson.self, Tidbit.self, LearnerState.self,
+                configurations: ModelConfiguration()
+            )
+        } catch {
+            // Schema migration failed (e.g. new required fields added to @Model).
+            // During active development, reset the store and retry with a fresh schema.
+            Self.deleteStore()
+            modelContainer = try! ModelContainer(
+                for: Lesson.self, Tidbit.self, LearnerState.self,
+                configurations: ModelConfiguration()
+            )
+        }
+    }
+    
+    /// Delete the on-disk SwiftData store files so a fresh schema can be created.
+    private static func deleteStore() {
+        let storeURL = URL.applicationSupportDirectory.appending(path: "default.store")
+        // SQLite companion files use hyphen separators: default.store-wal, default.store-shm
+        let variants = [
+            storeURL,
+            URL(fileURLWithPath: storeURL.path() + "-wal"),
+            URL(fileURLWithPath: storeURL.path() + "-shm")
+        ]
+        for url in variants {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+    
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -12,7 +45,7 @@ struct TidbitApp: App {
                 .preferredColorScheme(colorScheme)
                 .handleFirstLaunch()
         }
-        .modelContainer(for: [Lesson.self, Tidbit.self, LearnerState.self])
+        .modelContainer(modelContainer)
     }
     
     private var colorScheme: ColorScheme? {

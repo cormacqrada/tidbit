@@ -1,6 +1,31 @@
 import Foundation
 import SwiftData
 
+// MARK: - Part of Speech
+
+enum PartOfSpeech {
+    case noun, verb, adjective, adverb, other
+    
+    /// Get part of speech for a word using NSLinguisticTagger
+    static func classify(_ word: String) -> PartOfSpeech {
+        let tagger = NSLinguisticTagger(tagSchemes: [.lexicalClass], options: 0)
+        tagger.string = word
+        
+        guard let tag = tagger.tag(at: 0, scheme: .lexicalClass, tokenRange: nil, sentenceRange: nil),
+              let tagValue = tag.rawValue as? String else {
+            return .other
+        }
+        
+        switch tagValue {
+        case "noun": return .noun
+        case "verb": return .verb
+        case "adjective": return .adjective
+        case "adverb": return .adverb
+        default: return .other
+        }
+    }
+}
+
 // MARK: - Session State
 
 /// Represents an active learning session
@@ -168,6 +193,10 @@ class SessionViewModel {
     var pauseStartTime: Date?  // When timer was paused
     var autoAdvanceTask: Task<Void, Never>?  // For auto-advance after correct answer
     
+    // Stored for encoding exposure telemetry + scheduler-bypass inserts
+    private var modelContext: ModelContext?
+    private var currentLesson: Lesson?
+    
     // MARK: - Computed
     
     /// Elapsed time since session start (excluding paused time)
@@ -192,6 +221,10 @@ class SessionViewModel {
     // MARK: - Initialization
     
     func startSession(lesson: Lesson, modelContext: ModelContext) {
+        // Store for encoding exposure + on-demand insertions
+        self.modelContext = modelContext
+        self.currentLesson = lesson
+        
         // Get tidbits for this lesson
         let tidbits = lesson.tidbits.sorted { $0.sequenceIndex < $1.sequenceIndex }
         
@@ -253,13 +286,20 @@ class SessionViewModel {
     
     private func exerciseTypeOrder(_ type: ExerciseType) -> Int {
         switch type {
-        case .fillBlank, .wordFill: return 1
-        case .linePrompt: return 2
-        case .stanzaReconstruct, .conceptConnect: return 3
-        case .coldOpen: return 4
-        case .quickfire: return 5
-        case .meaningProbe, .explainBack: return 6
-        default: return 3
+        // Encoding first (build the trace before testing it)
+        case .chunkedRead: return 0
+        case .mnemonicLearn, .imageAnchorRead, .analogyRead: return 1
+        case .mnemonicDecode, .imageToConcept, .connectToPrior, .findYourCase: return 2
+        // Recall — lower cognitive demand first
+        case .fillBlank, .wordFill: return 3
+        case .linePrompt: return 4
+        case .stanzaReconstruct, .conceptConnect: return 5
+        case .evidenceFor: return 5
+        case .argumentMap, .applyToCase: return 6
+        case .coldOpen: return 7
+        case .quickfire: return 8
+        case .meaningProbe, .explainBack: return 9
+        default: return 5
         }
     }
     
@@ -351,15 +391,15 @@ class SessionViewModel {
         let signal: AdaptiveSignal
         switch level {
         case .gotIt: signal = .gotIt
-        case .close: signal = .struggled
-        case .missed: signal = .skipped
+        case .struggled: signal = .struggled
+        case .skipped: signal = .skipped
         }
         
         let updated = CompletedExercise(
             exerciseId: lastCompleted.exerciseId,
             tidbitId: lastCompleted.tidbitId,
             exerciseType: lastCompleted.exerciseType,
-            score: level == .gotIt ? 1.0 : level == .close ? 0.7 : 0.3,
+            score: level == .gotIt ? 1.0 : level == .struggled ? 0.7 : 0.3,
             responseTimeMs: lastCompleted.responseTimeMs,
             hintUsed: lastCompleted.hintUsed,
             adaptiveSignal: signal,
@@ -373,6 +413,63 @@ class SessionViewModel {
     func useHint() {
         showHint = true
         session?.hintUsed = true
+    }
+    
+    // MARK: - Encoding Exposure
+    
+    /// Record an encoding-mode exposure. Emits telemetry with mode = .encoding and
+    /// signal = .exposed. NEVER calls updateLearnerState — encoding does not affect
+    /// successRate, nextDue, or phase. Optionally updates LearnerState encoding counters.
+    func recordEncodingExposure(for exercise: ExerciseInstance) {
+        let event = TelemetryEvent(
+            sessionId: session?.id ?? UUID(),
+            tidbitId: exercise.tidbit.id,
+            templateId: exercise.exerciseType.rawValue,
+            learnerId: UUID(),
+            responseRaw: "",
+            score: 0,
+            responseTimeMs: 0,
+            hintUsed: false,
+            adaptiveSignal: .exposed,
+            mode: .encoding
+        )
+        TelemetryService.log(event: event)
+        
+        // Update encoding exposure counters on learner state (separate from recall scheduling)
+        if let modelContext = self.modelContext {
+            updateEncodingCounters(tidbitId: exercise.tidbit.id, technique: exercise.exerciseType.rawValue, modelContext: modelContext)
+        }
+    }
+    
+    private func updateEncodingCounters(tidbitId: UUID, technique: String, modelContext: ModelContext) {
+        let descriptor = FetchDescriptor<LearnerState>(
+            predicate: #Predicate { $0.tidbitId == tidbitId }
+        )
+        if let state = try? modelContext.fetch(descriptor).first {
+            state.encodingExposures += 1
+            if !state.encodedTechniques.contains(technique) {
+                state.encodedTechniques.append(technique)
+            }
+        }
+    }
+    
+    // MARK: - Practice This Now (scheduler bypass)
+    
+    /// Insert a tidbit as the next card in the current session, bypassing the
+    /// scheduler. Called from TidbitDetailView's “Practice this now” action.
+    func insertTidbitAsNext(_ tidbit: Tidbit, exerciseType: ExerciseType? = nil) {
+        guard var session = self.session else { return }
+        let type = exerciseType ?? defaultRecallType(for: tidbit.knowledgeDomain)
+        let hintPolicy = currentLesson?.hintPolicy ?? .always
+        let config = ExerciseConfig(fuzzyThreshold: 0.8, hintPolicy: hintPolicy, showHint: false, correctAnswer: nil)
+        let instance = ExerciseInstance(tidbit: tidbit, exerciseType: type, config: config)
+        session.exerciseQueue.insert(instance, at: session.currentIndex + 1)
+        self.session = session
+    }
+    
+    /// Pick a sensible default recall exercise for a domain when inserting on demand.
+    private func defaultRecallType(for domain: KnowledgeDomain) -> ExerciseType {
+        ExerciseType.recallExercises(for: domain).first ?? .textRecall
     }
     
     func skip() {
@@ -528,43 +625,79 @@ class SessionViewModel {
             blankedWord = words.first ?? ""
         }
         
-        // Generate distractors from the text itself
+        // Generate distractors matching part of speech
         var distractors = [blankedWord]
+        let targetPOS = PartOfSpeech.classify(blankedWord)
         
-        // Get other meaningful words from the tidbit body
-        let allWords = line.components(separatedBy: " ")
-            .map { $0.trimmingCharacters(in: .punctuationCharacters) }
-            .filter { $0.count >= 3 && $0.lowercased() != blankedWord.lowercased() && !commonWords.contains($0.lowercased()) }
+        // Get words from all tidbits, grouped by part of speech
+        var wordsByPOS: [PartOfSpeech: [String]] = [:]
         
-        // Also get words from other tidbits in the lesson for variety
-        var otherWords: [String] = []
         if let currentSession = session {
-            let currentExerciseId = currentSession.exerciseQueue[currentSession.currentIndex].id
-            for ex in currentSession.exerciseQueue where ex.id != currentExerciseId {
-                let exerciseWords = ex.tidbit.body.components(separatedBy: " ")
+            let allTidbitWords = currentSession.exerciseQueue.flatMap { ex in
+                ex.tidbit.body.components(separatedBy: " ")
                     .map { $0.trimmingCharacters(in: .punctuationCharacters) }
                     .filter { $0.count >= 3 && !commonWords.contains($0.lowercased()) }
-                otherWords.append(contentsOf: exerciseWords)
+            }
+            
+            for word in Set(allTidbitWords) {
+                let pos = PartOfSpeech.classify(word)
+                if pos != .other {
+                    wordsByPOS[pos, default: []].append(word)
+                }
             }
         }
         
-        // Combine and shuffle the pool, then take 3
-        let candidatePool = (allWords + otherWords).shuffled()
-        let wrongOptions = candidatePool.prefix(3)
-        distractors.append(contentsOf: wrongOptions)
+        // Get distractors matching the target word's part of speech
+        if let sameTypeWords = wordsByPOS[targetPOS] {
+            let matchingDistractors = sameTypeWords
+                .filter { $0.lowercased() != blankedWord.lowercased() }
+                .shuffled()
+                .prefix(3)
+            distractors.append(contentsOf: matchingDistractors)
+        }
         
-        // If not enough words from text, add some varied common poetic words
+        // If not enough matching words, fall back to similar parts of speech
         if distractors.count < 4 {
-            let fallbackWords = ["Death", "Life", "Time", "Love", "Hope", "Dark", "Light", "Soul", "Heart", "Mind", "Breath", "Word", "Song", "Dream", "Night"]
+            let fallbackPOS: [PartOfSpeech] = targetPOS == .noun ? [.noun] :
+                                              targetPOS == .verb ? [.verb] :
+                                              targetPOS == .adjective ? [.adjective, .adverb] :
+                                              targetPOS == .adverb ? [.adverb, .adjective] : []
+            
+            for pos in fallbackPOS {
+                if distractors.count >= 4 { break }
+                if let words = wordsByPOS[pos] {
+                    let fallbacks = words
+                        .filter { $0.lowercased() != blankedWord.lowercased() && !distractors.contains($0) }
+                        .shuffled()
+                    for word in fallbacks {
+                        if distractors.count >= 4 { break }
+                        distractors.append(word)
+                    }
+                }
+            }
+        }
+        
+        // Last resort: generic fallback words categorized by type
+        if distractors.count < 4 {
+            let nounFallbacks = ["Death", "Life", "Time", "Love", "Hope", "Soul", "Heart", "Mind", "Dream", "Night"]
+            let verbFallbacks = ["see", "hear", "feel", "know", "think", "come", "go", "stand", "fall", "rise"]
+            let adjFallbacks = ["dark", "light", "cold", "warm", "sweet", "bright", "soft", "hard", "deep", "high"]
+            
+            let fallbackWords = targetPOS == .noun ? nounFallbacks :
+                                targetPOS == .verb ? verbFallbacks :
+                                targetPOS == .adjective || targetPOS == .adverb ? adjFallbacks :
+                                (nounFallbacks + verbFallbacks + adjFallbacks)
+            
+            let fallbacks = fallbackWords
                 .filter { $0.lowercased() != blankedWord.lowercased() && !distractors.contains($0) }
                 .shuffled()
-            for word in fallbackWords {
+            for word in fallbacks {
                 if distractors.count >= 4 { break }
                 distractors.append(word)
             }
         }
         
-        // Shuffle the final list so correct answer appears in different positions
+        // Shuffle so correct answer appears in random position
         distractors.shuffle()
         
         // Store in exercise config via the exercise queue

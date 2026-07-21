@@ -45,6 +45,8 @@ struct ExerciseInputFooter: View {
     let exercise: ExerciseInstance
     @Bindable var viewModel: SessionViewModel
     
+    @State private var showEncodingAid = false
+    
     var body: some View {
         VStack(spacing: 12) {
             // Word chips for fillBlank (with result coloring after evaluation)
@@ -60,6 +62,10 @@ struct ExerciseInputFooter: View {
         }
         .padding(20)
         .background(DesignSystem.parchment)
+        .sheet(isPresented: $showEncodingAid) {
+            EncodingAidSheet(tidbit: exercise.tidbit)
+                .presentationDetents([.medium])
+        }
     }
     
     // MARK: - Word Chips with Result Coloring
@@ -215,10 +221,21 @@ struct ExerciseInputFooter: View {
     @ViewBuilder
     private var buttonRow: some View {
         HStack(spacing: 12) {
-            // Hint button (if applicable and not in feedback mode)
+            // Hint menu (if applicable and not in feedback mode)
             if !viewModel.showFeedback, exercise.config.hintPolicy != .never, exercise.exerciseType != .coldOpen {
-                Button {
-                    viewModel.useHint()
+                Menu {
+                    Button {
+                        viewModel.useHint()
+                    } label: {
+                        Label("Show first letters", systemImage: "textformat")
+                    }
+                    .disabled(viewModel.showHint && exercise.config.hintPolicy == .once)
+                    
+                    Button {
+                        showEncodingAid = true
+                    } label: {
+                        Label("Give me a way to remember", systemImage: "brain.head.profile")
+                    }
                 } label: {
                     Image(systemName: viewModel.showHint ? "lightbulb.fill" : "lightbulb")
                         .font(.system(size: 16))
@@ -227,7 +244,6 @@ struct ExerciseInputFooter: View {
                         .background(viewModel.showHint ? DesignSystem.parchment2 : DesignSystem.accentLight)
                         .cornerRadius(DesignSystem.radius)
                 }
-                .disabled(viewModel.showHint && exercise.config.hintPolicy == .once)
             }
             
             // Submit or Reveal button
@@ -367,11 +383,16 @@ struct SessionView: View {
                         }
                         
                         // ===== FIXED FOOTER =====
-                        if viewModel.showFeedback, let result = viewModel.lastResult {
+                        if exercise.exerciseType.mode == .encoding {
+                            // Encoding exercises render their own acknowledge button;
+                            // no scored input footer or evaluation drawer.
+                            Color.clear.frame(height: 12)
+                        } else if viewModel.showFeedback, let result = viewModel.lastResult {
                             // Evaluation drawer after submission
                             EvaluationDrawer(
                                 result: result,
                                 tidbit: exercise.tidbit,
+                                distractors: exercise.config.distractors,
                                 onContinue: {
                                     viewModel.nextExercise()
                                 },
@@ -590,6 +611,15 @@ struct ExerciseContentView: View {
                 ExplainBackExerciseView(exercise: exercise, viewModel: viewModel, showDrawer: showDrawer)
             case .vocabMatch:
                 VocabMatchExerciseView(exercise: exercise, viewModel: viewModel, showDrawer: showDrawer)
+            case .applyToCase:
+                ApplyToCaseExerciseView(exercise: exercise, viewModel: viewModel, showDrawer: showDrawer)
+            case .argumentMap:
+                ArgumentMapExerciseView(exercise: exercise, viewModel: viewModel, showDrawer: showDrawer)
+            case .evidenceFor:
+                EvidenceForExerciseView(exercise: exercise, viewModel: viewModel, showDrawer: showDrawer)
+            case .mnemonicLearn, .mnemonicDecode, .imageAnchorRead, .imageToConcept,
+                 .analogyRead, .chunkedRead, .connectToPrior, .findYourCase:
+                EncodingExerciseView(exercise: exercise, viewModel: viewModel, showDrawer: showDrawer)
             }
         }
     }
@@ -684,6 +714,7 @@ struct SessionCompleteView: View {
 struct EvaluationDrawer: View {
     let result: ValidationResult
     let tidbit: Tidbit
+    var distractors: [String] = []
     let onContinue: () -> Void
     let onRetry: (() -> Void)?
     
@@ -691,6 +722,32 @@ struct EvaluationDrawer: View {
     
     var body: some View {
         VStack(spacing: 0) {
+            // Word chips above the divider (if we have distractors)
+            if !distractors.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(distractors, id: \.self) { word in
+                        let isCorrectAnswer = word == result.correctAnswer
+                        
+                        Text(word)
+                            .font(DesignSystem.serif(size: 15))
+                            .italic()
+                            .foregroundColor(isCorrectAnswer ? DesignSystem.green : DesignSystem.ink4)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(isCorrectAnswer ? DesignSystem.greenLight : DesignSystem.card)
+                            .cornerRadius(20)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .stroke(isCorrectAnswer ? DesignSystem.greenMid : DesignSystem.parchment3, lineWidth: 1)
+                            )
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity)
+                .background(isCorrect ? DesignSystem.greenLight : DesignSystem.redLight)
+            }
+            
             // Top border - full width, no padding
             Rectangle()
                 .fill(isCorrect ? DesignSystem.greenMid : DesignSystem.redMid)
@@ -1077,6 +1134,15 @@ struct ExerciseIcon: View {
         case .conceptConnect: return "link"
         case .explainBack: return "bubble.left.and.exclamationmark.bubble.right"
         case .meaningProbe: return "lightbulb"
+        case .applyToCase: return "wand.and.rays"
+        case .argumentMap: return "text.alignleft"
+        case .evidenceFor: return "checkmark.seal"
+        case .mnemonicLearn, .mnemonicDecode: return "textformat.abc.dottedunderline"
+        case .imageAnchorRead, .imageToConcept: return "photo.on.rectangle.angled"
+        case .analogyRead: return "arrow.triangle.2.circlepath"
+        case .chunkedRead: return "square.grid.2x2"
+        case .connectToPrior: return "link.circle"
+        case .findYourCase: return "mappin.and.ellipse"
         }
     }
     
@@ -1086,6 +1152,89 @@ struct ExerciseIcon: View {
     
     private var iconForegroundColor: Color {
         DesignSystem.accent
+    }
+}
+
+// MARK: - Encoding Aid Sheet (in-session memory hook)
+
+/// Shown from the hint button's "Give me a way to remember" option. Surfaces the
+/// tidbit's existing encoding artifacts (mnemonic, image anchor, analogy) so the
+/// user can build the memory trace mid-recall. Mode = encoding, exposure only.
+struct EncodingAidSheet: View {
+    let tidbit: Tidbit
+    @Environment(\.dismiss) private var dismiss
+    
+    private var artifacts: EncodingArtifacts { tidbit.encodingArtifacts }
+    
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(tidbit.concept)
+                        .font(DesignSystem.serif(size: 18))
+                        .italic()
+                        .foregroundColor(DesignSystem.ink)
+                    
+                    if let mnemonic = artifacts.mnemonic {
+                        aidCard(title: "Mnemonic", symbol: "textformat.abc", text: mnemonic)
+                    }
+                    if let image = artifacts.imageDescription {
+                        aidCard(title: "Image anchor", symbol: "photo", text: image)
+                    }
+                    if let analogy = artifacts.analogy {
+                        aidCard(title: "Analogy", symbol: "arrow.triangle.2.circlepath", text: analogy)
+                    }
+                    if let story = artifacts.story {
+                        aidCard(title: "Story", symbol: "book", text: story)
+                    }
+                    
+                    if artifacts.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: "brain.head.profile")
+                                .font(.system(size: 36))
+                                .foregroundColor(DesignSystem.ink4)
+                            Text("No memory aids generated yet")
+                                .font(.custom("DM Sans", size: 14))
+                                .foregroundColor(DesignSystem.ink3)
+                            Text("Use “Encode this” on the tidbit detail to add one.")
+                                .font(.custom("DM Sans", size: 12))
+                                .foregroundColor(DesignSystem.ink4)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 40)
+                    }
+                }
+                .padding(20)
+            }
+            .navigationTitle("Memory aid")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Close") { dismiss() }
+                }
+            }
+        }
+    }
+    
+    private func aidCard(title: String, symbol: String, text: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.system(size: 14))
+                    .foregroundColor(DesignSystem.accent)
+                Text(title)
+                    .font(.custom("DM Sans", size: 12).weight(.medium))
+                    .foregroundColor(DesignSystem.ink3)
+                    .textCase(.uppercase)
+            }
+            Text(text)
+                .font(DesignSystem.serif(size: 16))
+                .foregroundColor(DesignSystem.ink)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .background(DesignSystem.parchment2)
+                .cornerRadius(DesignSystem.radius)
+        }
     }
 }
 

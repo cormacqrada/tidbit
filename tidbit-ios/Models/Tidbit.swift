@@ -25,7 +25,20 @@ final class Tidbit {
     var topicTags: [String]
     var difficulty: Int           // 1-5
     var dependencyIds: [UUID]     // IDs of prerequisite tidbits
-    var meaningNotes: String?     // AI-generated context note
+    var meaningNotes: String?     // AI-generated context note (Explanation facet)
+    
+    // Knowledge structure — owned by the tidbit (orthogonal to ContentType/LearningGoal)
+    var knowledgeDomain: KnowledgeDomain
+    
+    // Concept-domain facets (the Goodhart/Campbell shape)
+    var simpleMeaning: String?    // Plain-language restatement (Simple meaning facet)
+    var examples: [String]        // Real-world instances (Examples facet)
+    
+    // Free-form user notes (editable; "saw the movie, add notes to themes")
+    var userNotes: String?
+    
+    // Encoding artifacts (generated on demand, stored as JSON)
+    var encodingArtifactsData: Data?
     
     // Audit
     var createdAt: Date
@@ -48,6 +61,11 @@ final class Tidbit {
         difficulty: Int = 2,
         dependencyIds: [UUID] = [],
         meaningNotes: String? = nil,
+        knowledgeDomain: KnowledgeDomain = .concept,
+        simpleMeaning: String? = nil,
+        examples: [String] = [],
+        userNotes: String? = nil,
+        encodingArtifacts: EncodingArtifacts = EncodingArtifacts(),
         createdAt: Date = Date(),
         createdBy: CreationSource = .ai,
         lesson: Lesson? = nil
@@ -65,15 +83,71 @@ final class Tidbit {
         self.difficulty = difficulty
         self.dependencyIds = dependencyIds
         self.meaningNotes = meaningNotes
+        self.knowledgeDomain = knowledgeDomain
+        self.simpleMeaning = simpleMeaning
+        self.examples = examples
+        self.userNotes = userNotes
+        self.encodingArtifactsData = try? JSONEncoder().encode(encodingArtifacts)
         self.createdAt = createdAt
         self.createdBy = createdBy
         self.lesson = lesson
+    }
+    
+    var encodingArtifacts: EncodingArtifacts {
+        get {
+            guard let data = encodingArtifactsData else { return EncodingArtifacts() }
+            return (try? JSONDecoder().decode(EncodingArtifacts.self, from: data)) ?? EncodingArtifacts()
+        }
+        set {
+            encodingArtifactsData = try? JSONEncoder().encode(newValue)
+        }
     }
 }
 
 enum CreationSource: String, Codable {
     case ai
     case manual
+}
+
+// MARK: - Encoding Artifacts
+
+/// Memory-trace aids generated for a tidbit (at ingest or on demand). All fields
+/// optional — only the techniques the user selected are populated. Rendered by
+/// encoding exercises (mode = .encoding) and surfaced as in-session hint aids.
+struct EncodingArtifacts: Codable {
+    var mnemonic: String?          // acronym / acrostic
+    var story: String?             // narrative of the content
+    var palace: String?            // loci (memory palace) journey
+    var analogy: String?           // familiar-domain mapping
+    var imageDescription: String?  // bizarre image anchor
+    var chunks: [Chunk] = []
+    var personalCase: String?      // user-supplied real example (find_your_case)
+    var priorLink: String?         // user-supplied connection to prior knowledge
+    
+    struct Chunk: Codable, Identifiable {
+        var id: UUID = UUID()
+        var label: String
+        var memberConcepts: [String]
+    }
+    
+    var isEmpty: Bool {
+        mnemonic == nil && story == nil && palace == nil && analogy == nil
+            && imageDescription == nil && chunks.isEmpty
+            && personalCase == nil && priorLink == nil
+    }
+    
+    init(mnemonic: String? = nil, story: String? = nil, palace: String? = nil,
+         analogy: String? = nil, imageDescription: String? = nil, chunks: [Chunk] = [],
+         personalCase: String? = nil, priorLink: String? = nil) {
+        self.mnemonic = mnemonic
+        self.story = story
+        self.palace = palace
+        self.analogy = analogy
+        self.imageDescription = imageDescription
+        self.chunks = chunks
+        self.personalCase = personalCase
+        self.priorLink = priorLink
+    }
 }
 
 // MARK: - Lesson (Collection)
@@ -90,6 +164,7 @@ final class Lesson {
     
     // Configuration
     var learningGoal: LearningGoal
+    var primaryKnowledgeDomain: KnowledgeDomain  // derived hint for ingest defaults / display
     var sessionLength: Int        // minutes: 3, 5, 10, 15
     var difficultyRamp: Double    // 0.0 = gradual, 1.0 = steep
     var hintPolicy: HintPolicy
@@ -116,6 +191,7 @@ final class Lesson {
         detectedLanguage: String? = nil,
         estimatedLineCount: Int? = nil,
         learningGoal: LearningGoal = .memorizeVerbatim,
+        primaryKnowledgeDomain: KnowledgeDomain = .concept,
         sessionLength: Int = 5,
         difficultyRamp: Double = 0.25,
         hintPolicy: HintPolicy = .always,
@@ -131,6 +207,7 @@ final class Lesson {
         self.detectedLanguage = detectedLanguage
         self.estimatedLineCount = estimatedLineCount
         self.learningGoal = learningGoal
+        self.primaryKnowledgeDomain = primaryKnowledgeDomain
         self.sessionLength = sessionLength
         self.difficultyRamp = difficultyRamp
         self.hintPolicy = hintPolicy
@@ -170,6 +247,10 @@ final class LearnerState {
     // Phase
     var phase: Phase
     
+    // Encoding exposure state (separate from scored recall scheduling)
+    var encodedTechniques: [String]
+    var encodingExposures: Int
+    
     // Signal history (stored as JSON array of raw values)
     var signalHistoryData: Data?
     
@@ -183,6 +264,8 @@ final class LearnerState {
         nextDue: Date = Date(),
         intervalDays: Int = 1,
         phase: Phase = .learning,
+        encodedTechniques: [String] = [],
+        encodingExposures: Int = 0,
         signalHistory: [AdaptiveSignal] = []
     ) {
         self.id = id
@@ -194,6 +277,8 @@ final class LearnerState {
         self.nextDue = nextDue
         self.intervalDays = intervalDays
         self.phase = phase
+        self.encodedTechniques = encodedTechniques
+        self.encodingExposures = encodingExposures
         self.signalHistoryData = try? JSONEncoder().encode(signalHistory.map { $0.rawValue })
     }
     
@@ -223,6 +308,7 @@ struct TelemetryEvent: Codable, Identifiable {
     let responseTimeMs: Int
     let hintUsed: Bool
     let adaptiveSignal: AdaptiveSignal
+    let mode: ExerciseMode
     let exerciseConfig: [String: String]
     
     init(
@@ -237,6 +323,7 @@ struct TelemetryEvent: Codable, Identifiable {
         responseTimeMs: Int,
         hintUsed: Bool,
         adaptiveSignal: AdaptiveSignal,
+        mode: ExerciseMode = .recall,
         exerciseConfig: [String: String] = [:]
     ) {
         self.id = id
@@ -250,6 +337,7 @@ struct TelemetryEvent: Codable, Identifiable {
         self.responseTimeMs = responseTimeMs
         self.hintUsed = hintUsed
         self.adaptiveSignal = adaptiveSignal
+        self.mode = mode
         self.exerciseConfig = exerciseConfig
     }
 }

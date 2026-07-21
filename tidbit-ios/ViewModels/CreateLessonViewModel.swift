@@ -29,15 +29,41 @@ enum SourceTab: String, CaseIterable {
     }
 }
 
+// MARK: - Source Structure
+
+/// How the source text is organized — determines the extraction path.
+enum SourceStructure: String, Codable {
+    case poem           // line/stanza based (verbatim)
+    case prose          // paragraph based (paraphrase acceptable)
+    case faceted        // structured with labeled sections (Definition, Examples, etc.)
+}
+
 // MARK: - Ingestion Result
 
 struct IngestionResult {
     let text: String
     let contentType: ContentType
+    let sourceStructure: SourceStructure
+    let primaryKnowledgeDomain: KnowledgeDomain
     let detectedLanguage: String
     let estimatedLineCount: Int
     let suggestedTitle: String?
     let detectedAuthor: String?
+    
+    // Backwards-compatible convenience init (defaults to prose/concept)
+    init(text: String, contentType: ContentType, sourceStructure: SourceStructure = .prose,
+         primaryKnowledgeDomain: KnowledgeDomain = .concept,
+         detectedLanguage: String, estimatedLineCount: Int,
+         suggestedTitle: String?, detectedAuthor: String?) {
+        self.text = text
+        self.contentType = contentType
+        self.sourceStructure = sourceStructure
+        self.primaryKnowledgeDomain = primaryKnowledgeDomain
+        self.detectedLanguage = detectedLanguage
+        self.estimatedLineCount = estimatedLineCount
+        self.suggestedTitle = suggestedTitle
+        self.detectedAuthor = detectedAuthor
+    }
 }
 
 // MARK: - Processing Step
@@ -168,9 +194,10 @@ class CreateLessonViewModel {
     }
     
     func generateExerciseMix() {
-        // Generate based on content type and learning goal
+        // Generate based on knowledge domain and learning goal (domain-aware)
+        let domain = ingestionResult?.primaryKnowledgeDomain ?? .concept
         exerciseMix = ExerciseMixGenerator.generate(
-            contentType: contentType,
+            domain: domain,
             learningGoal: learningGoal
         )
     }
@@ -213,12 +240,14 @@ class CreateLessonViewModel {
     }
     
     func createLesson(modelContext: ModelContext) -> Lesson {
+        let primaryDomain = ingestionResult?.primaryKnowledgeDomain ?? .concept
         let lesson = Lesson(
             name: collectionName,
             contentType: contentType,
             detectedLanguage: ingestionResult?.detectedLanguage,
             estimatedLineCount: ingestionResult?.estimatedLineCount,
             learningGoal: learningGoal,
+            primaryKnowledgeDomain: primaryDomain,
             sessionLength: sessionLength,
             difficultyRamp: difficultyRamp,
             hintPolicy: hintPolicy,
@@ -229,9 +258,12 @@ class CreateLessonViewModel {
         )
         
         // Generate tidbits from source text
+        let structure = ingestionResult?.sourceStructure ?? .prose
         let tidbits = TidbitGenerator.generate(
             from: pastedText,
             contentType: contentType,
+            sourceStructure: structure,
+            primaryDomain: primaryDomain,
             sourceTitle: collectionName
         )
         
@@ -243,6 +275,9 @@ class CreateLessonViewModel {
         
         // Insert lesson
         modelContext.insert(lesson)
+        
+        // Persist to the store
+        try? modelContext.save()
         
         self.createdLesson = lesson
         return lesson
@@ -297,6 +332,11 @@ enum ContentDetector {
         
         let contentType: ContentType = isPoem ? .poem : .prose
         
+        // Detect faceted structure (Definition / Examples / Thesis / Step N headings)
+        let facetResult = FacetDetector.detect(text: text, lines: lines)
+        let sourceStructure: SourceStructure = facetResult?.structure ?? (isPoem ? .poem : .prose)
+        let primaryDomain: KnowledgeDomain = facetResult?.domain ?? (isPoem ? .word : .concept)
+        
         // Try to extract title from first line if it looks like a title
         let suggestedTitle: String? = lines.first.map { firstLine in
             firstLine.count < 50 ? firstLine : nil
@@ -305,6 +345,8 @@ enum ContentDetector {
         return IngestionResult(
             text: text,
             contentType: contentType,
+            sourceStructure: sourceStructure,
+            primaryKnowledgeDomain: primaryDomain,
             detectedLanguage: "English", // MVP: assume English
             estimatedLineCount: lines.count,
             suggestedTitle: suggestedTitle,
@@ -313,50 +355,185 @@ enum ContentDetector {
     }
 }
 
+// MARK: - Facet Detector
+
+/// Detects labeled-section structure in pasted text (the Goodhart/Campbell shape).
+/// Recognizes facet signatures for concept (Definition/Examples), thesis
+/// (Thesis/Argument/Evidence), and procedure (Step N) domains.
+enum FacetDetector {
+    
+    struct Result {
+        let structure: SourceStructure
+        let domain: KnowledgeDomain
+        let facets: [(label: String, body: String)]  // ordered facet sections
+        let itemTitles: [String]  // ### headings or detected concept names
+    }
+    
+    static func detect(text: String, lines: [String]) -> Result? {
+        // Check for markdown heading structure first
+        let hasMarkdownHeadings = lines.contains { $0.hasPrefix("#") || $0.hasPrefix("##") || $0.hasPrefix("###") }
+        
+        // Collect recognized facet labels present in the text
+        let conceptFacets: Set<String> = ["definition", "simple meaning", "simple meaning:", "explanation", "examples", "example"]
+        let thesisFacets: Set<String> = ["thesis", "argument", "arguments", "evidence", "claim", "support", "key points"]
+        let procedureFacets: Set<String> = ["step 1", "step 2", "step 3", "steps"]
+        
+        let normalizedLines = lines.map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+        
+        let foundConcept = normalizedLines.filter { conceptFacets.contains($0) }.count
+        let foundThesis = normalizedLines.filter { thesisFacets.contains($0) }.count
+        let foundProcedure = normalizedLines.filter { procedureFacets.contains($0) }.count
+        
+        // Need at least 2 facet labels to classify as faceted
+        let maxFacets = max(foundConcept, foundThesis, foundProcedure)
+        guard maxFacets >= 2 else { return nil }
+        
+        let domain: KnowledgeDomain
+        let facetSet: Set<String>
+        if foundConcept >= foundThesis && foundConcept >= foundProcedure {
+            domain = .concept
+            facetSet = conceptFacets
+        } else if foundThesis >= foundProcedure {
+            domain = .thesis
+            facetSet = thesisFacets
+        } else {
+            domain = .procedure
+            facetSet = procedureFacets
+        }
+        
+        // Parse facets — split text into (label, body) sections
+        let facets = parseFacets(text: text, facetSet: facetSet)
+        
+        // Detect item titles (### headings or short lines before facets)
+        let itemTitles = detectItemTitles(lines: lines, hasMarkdownHeadings: hasMarkdownHeadings)
+        
+        return Result(structure: .faceted, domain: domain, facets: facets, itemTitles: itemTitles)
+    }
+    
+    /// Parse text into ordered (label, body) sections by scanning for facet labels.
+    private static func parseFacets(text: String, facetSet: Set<String>) -> [(label: String, body: String)] {
+        let lines = text.components(separatedBy: .newlines)
+        var facets: [(String, String)] = []
+        var currentLabel: String?
+        var currentBody: String = ""
+        
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let normalized = trimmed.lowercased()
+            
+            if facetSet.contains(normalized) || facetSet.contains(normalized.replacingOccurrences(of: ":", with: "")) {
+                if let label = currentLabel {
+                    facets.append((label, currentBody.trimmingCharacters(in: .whitespacesAndNewlines)))
+                }
+                currentLabel = trimmed.replacingOccurrences(of: ":", with: "")
+                currentBody = ""
+            } else if currentLabel != nil {
+                if !trimmed.isEmpty {
+                    currentBody += trimmed + "\n"
+                }
+            }
+        }
+        if let label = currentLabel {
+            facets.append((label, currentBody.trimmingCharacters(in: .whitespacesAndNewlines)))
+        }
+        
+        return facets
+    }
+    
+    /// Detect item titles — either markdown ### headings or short standalone lines
+    /// that precede facet blocks (e.g. "Goodhart's Law" before "Definition").
+    private static func detectItemTitles(lines: [String], hasMarkdownHeadings: Bool) -> [String] {
+        if hasMarkdownHeadings {
+            return lines.compactMap { line in
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if trimmed.hasPrefix("###") || trimmed.hasPrefix("##") {
+                    return trimmed.replacingOccurrences(of: "^#+\\s*", with: "", options: .regularExpression)
+                }
+                return nil
+            }
+        }
+        
+        // Non-markdown: short lines (1-5 words, < 60 chars) that sit between blank lines
+        // and are followed by a facet label. Heuristic: standalone short lines not containing
+        // facet labels themselves.
+        let facetLabels: Set<String> = ["definition", "simple meaning", "explanation", "examples", "thesis", "argument", "evidence"]
+        var titles: [String] = []
+        for (i, line) in lines.enumerated() {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let wordCount = trimmed.components(separatedBy: .whitespaces).filter { !$0.isEmpty }.count
+            let isShort = trimmed.count < 60 && wordCount <= 5
+            let isNotFacet = !facetLabels.contains(trimmed.lowercased())
+            let isNotBlank = !trimmed.isEmpty
+            // Look ahead: is the next non-blank line a facet label?
+            var nextNonBlankIsFacet = false
+            for j in (i+1)..<min(i+4, lines.count) {
+                let next = lines[j].trimmingCharacters(in: .whitespaces)
+                if !next.isEmpty {
+                    nextNonBlankIsFacet = facetLabels.contains(next.lowercased())
+                    break
+                }
+            }
+            if isShort && isNotFacet && isNotBlank && nextNonBlankIsFacet {
+                titles.append(trimmed)
+            }
+        }
+        return titles
+    }
+}
+
 // MARK: - Exercise Mix Generator
 
 enum ExerciseMixGenerator {
-    static func generate(contentType: ContentType, learningGoal: LearningGoal) -> [ExerciseWeight] {
-        // Matrix from specs: content_type × learning_goal
-        // Returns weights 1-5 for each exercise type
+    /// Domain-aware exercise mix generation. Uses the knowledge domain × learning goal
+    /// to select exercises from the eligibility matrix with appropriate weights.
+    static func generate(domain: KnowledgeDomain, learningGoal: LearningGoal) -> [ExerciseWeight] {
+        let recallTypes = ExerciseType.recallExercises(for: domain)
         
-        switch (contentType, learningGoal) {
-        case (.poem, .memorizeVerbatim):
-            return [
-                ExerciseWeight(type: .linePrompt, weight: 5),
-                ExerciseWeight(type: .fillBlank, weight: 4),
-                ExerciseWeight(type: .stanzaReconstruct, weight: 3),
-                ExerciseWeight(type: .coldOpen, weight: 2),
-                ExerciseWeight(type: .quickfire, weight: 2)
-            ]
-            
-        case (.poem, .understandDeeply):
-            return [
-                ExerciseWeight(type: .linePrompt, weight: 3),
-                ExerciseWeight(type: .meaningProbe, weight: 4),
-                ExerciseWeight(type: .stanzaReconstruct, weight: 3),
-                ExerciseWeight(type: .coldOpen, weight: 1)
-            ]
-            
-        case (.prose, .recallKeyIdeas):
-            return [
-                ExerciseWeight(type: .textRecall, weight: 3),
-                ExerciseWeight(type: .conceptConnect, weight: 4),
-                ExerciseWeight(type: .fillBlank, weight: 2)
-            ]
-            
-        case (.prose, .understandDeeply):
-            return [
-                ExerciseWeight(type: .meaningProbe, weight: 5),
-                ExerciseWeight(type: .conceptConnect, weight: 3),
-                ExerciseWeight(type: .explainBack, weight: 3)
-            ]
-            
-        default:
-            return [
-                ExerciseWeight(type: .textRecall, weight: 3),
-                ExerciseWeight(type: .fillBlank, weight: 2)
-            ]
+        // Weight each recall exercise based on the learning goal
+        return recallTypes.map { type in
+            ExerciseWeight(type: type, weight: weightFor(type: type, domain: domain, goal: learningGoal))
+        }
+    }
+    
+    /// Legacy contentType-based generation (kept for EditLessonSheet reset compatibility).
+    static func generate(contentType: ContentType, learningGoal: LearningGoal) -> [ExerciseWeight] {
+        // Map contentType to a default domain and delegate
+        let domain: KnowledgeDomain = contentType == .poem ? .word : .concept
+        return generate(domain: domain, learningGoal: learningGoal)
+    }
+    
+    private static func weightFor(type: ExerciseType, domain: KnowledgeDomain, goal: LearningGoal) -> Int {
+        // Higher weights for exercises that match the learning goal's cognitive demand
+        switch goal {
+        case .memorizeVerbatim:
+            // Favor verbatim reproduction exercises
+            switch type {
+            case .linePrompt, .wordFill, .stanzaReconstruct, .coldOpen: return 5
+            case .fillBlank: return 4
+            case .quickfire: return 3
+            default: return 2
+            }
+        case .understandDeeply:
+            // Favor comprehension and transfer exercises
+            switch type {
+            case .meaningProbe, .explainBack, .applyToCase, .argumentMap: return 5
+            case .evidenceFor, .conceptConnect: return 3
+            default: return 2
+            }
+        case .recallKeyIdeas:
+            // Balanced recall
+            switch type {
+            case .textRecall, .explainBack, .conceptConnect: return 4
+            case .fillBlank, .evidenceFor, .applyToCase: return 3
+            default: return 2
+            }
+        case .examPrep:
+            // Heavy on all recall types
+            switch type {
+            case .textRecall, .fillBlank, .coldOpen, .quickfire: return 4
+            case .stanzaReconstruct, .linePrompt, .wordFill: return 4
+            default: return 3
+            }
         }
     }
 }
@@ -364,11 +541,16 @@ enum ExerciseMixGenerator {
 // MARK: - Tidbit Generator
 
 enum TidbitGenerator {
-    static func generate(from text: String, contentType: ContentType, sourceTitle: String) -> [Tidbit] {
-        switch contentType {
+    static func generate(from text: String, contentType: ContentType,
+                         sourceStructure: SourceStructure = .prose,
+                         primaryDomain: KnowledgeDomain = .concept,
+                         sourceTitle: String) -> [Tidbit] {
+        switch sourceStructure {
+        case .faceted:
+            return generateFacetedTidbits(from: text, primaryDomain: primaryDomain, sourceTitle: sourceTitle)
         case .poem:
             return generatePoemTidbits(from: text, sourceTitle: sourceTitle)
-        default:
+        case .prose:
             return generateProseTidbits(from: text, sourceTitle: sourceTitle)
         }
     }
@@ -398,7 +580,8 @@ enum TidbitGenerator {
                     stanzaIndex: stanzaIndex,
                     sourceTitle: sourceTitle,
                     difficulty: 2,
-                    dependencyIds: dependencyIds.suffix(1).map { $0 } // Depend on previous line
+                    dependencyIds: dependencyIds.suffix(1).map { $0 }, // Depend on previous line
+                    knowledgeDomain: .word
                 )
                 
                 tidbits.append(tidbit)
@@ -425,12 +608,140 @@ enum TidbitGenerator {
                 body: trimmed,
                 sequenceIndex: index,
                 sourceTitle: sourceTitle,
-                difficulty: 2
+                difficulty: 2,
+                knowledgeDomain: .concept
             )
             
             tidbits.append(tidbit)
         }
         
         return tidbits
+    }
+    
+    // MARK: - Faceted Tidbit Generator
+    
+    /// Extract tidbits from structured/faceted text. Each item (detected by title
+    /// or ### heading) becomes one tidbit with its facets mapped to the appropriate
+    /// fields: Definition → body, Simple meaning → simpleMeaning, Explanation →
+    /// meaningNotes, Examples → examples. For thesis domains: Thesis → body,
+    /// Argument → meaningNotes, Evidence → examples.
+    private static func generateFacetedTidbits(from text: String, primaryDomain: KnowledgeDomain,
+                                               sourceTitle: String) -> [Tidbit] {
+        let lines = text.components(separatedBy: .newlines)
+        let nonBlankLines = lines.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        
+        guard let facetResult = FacetDetector.detect(text: text, lines: nonBlankLines) else {
+            return generateProseTidbits(from: text, sourceTitle: sourceTitle)
+        }
+        
+        let facets = facetResult.facets
+        let itemTitles = facetResult.itemTitles
+        let domain = facetResult.domain
+        
+        var facetMap: [String: String] = [:]
+        for (label, body) in facets {
+            facetMap[label.lowercased()] = body
+        }
+        
+        if itemTitles.count > 1 {
+            return generateMultiItemFacetedTidbits(from: text, itemTitles: itemTitles, domain: domain, sourceTitle: sourceTitle)
+        }
+        
+        let title = itemTitles.first ?? sourceTitle
+        let tidbit = buildTidbitFromFacets(title: title, facetMap: facetMap, domain: domain,
+                                           sequenceIndex: 0, sourceTitle: sourceTitle)
+        return [tidbit]
+    }
+    
+    private static func generateMultiItemFacetedTidbits(from text: String, itemTitles: [String],
+                                                         domain: KnowledgeDomain, sourceTitle: String) -> [Tidbit] {
+        let lines = text.components(separatedBy: .newlines)
+        var blocks: [(title: String, lines: [String])] = []
+        var currentTitle: String?
+        var currentLines: [String] = []
+        
+        let titleSet = Set(itemTitles.map { $0.lowercased() })
+        
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if titleSet.contains(trimmed.lowercased()) {
+                if let title = currentTitle {
+                    blocks.append((title, currentLines))
+                }
+                currentTitle = trimmed
+                currentLines = []
+            } else if currentTitle != nil {
+                currentLines.append(line)
+            }
+        }
+        if let title = currentTitle {
+            blocks.append((title, currentLines))
+        }
+        
+        var tidbits: [Tidbit] = []
+        for (index, block) in blocks.enumerated() {
+            let blockText = block.lines.joined(separator: "\n")
+            let nonBlank = block.lines.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            guard let blockFacets = FacetDetector.detect(text: blockText, lines: nonBlank) else { continue }
+            
+            var facetMap: [String: String] = [:]
+            for (label, body) in blockFacets.facets {
+                facetMap[label.lowercased()] = body
+            }
+            
+            let tidbit = buildTidbitFromFacets(title: block.title, facetMap: facetMap, domain: domain,
+                                               sequenceIndex: index, sourceTitle: sourceTitle)
+            tidbits.append(tidbit)
+        }
+        
+        return tidbits
+    }
+    
+    private static func buildTidbitFromFacets(title: String, facetMap: [String: String],
+                                              domain: KnowledgeDomain, sequenceIndex: Int,
+                                              sourceTitle: String) -> Tidbit {
+        var body = ""
+        var simpleMeaning: String? = nil
+        var meaningNotes: String? = nil
+        var examples: [String] = []
+        
+        switch domain {
+        case .concept:
+            body = facetMap["definition"] ?? facetMap["simple meaning"] ?? title
+            simpleMeaning = facetMap["simple meaning"]
+            meaningNotes = facetMap["explanation"]
+            if let ex = facetMap["examples"] {
+                examples = ex.components(separatedBy: .newlines)
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
+                    .map { $0.replacingOccurrences(of: "^[\\-•*]\\s*", with: "", options: .regularExpression) }
+            }
+        case .thesis:
+            body = facetMap["thesis"] ?? facetMap["claim"] ?? title
+            simpleMeaning = facetMap["key points"]
+            meaningNotes = facetMap["argument"] ?? facetMap["arguments"] ?? facetMap["support"]
+            if let ex = facetMap["evidence"] {
+                examples = ex.components(separatedBy: .newlines)
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
+            }
+        case .procedure:
+            body = facetMap["steps"] ?? title
+            meaningNotes = facetMap["step 1"]
+        default:
+            body = facetMap["definition"] ?? title
+        }
+        
+        return Tidbit(
+            concept: title,
+            body: body,
+            sequenceIndex: sequenceIndex,
+            sourceTitle: sourceTitle,
+            difficulty: 2,
+            meaningNotes: meaningNotes,
+            knowledgeDomain: domain,
+            simpleMeaning: simpleMeaning,
+            examples: examples
+        )
     }
 }
