@@ -1,5 +1,22 @@
 import SwiftUI
 import SwiftData
+import UIKit
+
+// MARK: - App Links
+
+/// External links surfaced in the app. Update these before each release.
+enum AppLinks {
+    /// Hosted privacy policy URL. Required by App Store Connect — must resolve
+    /// to a real, publicly reachable page before submission.
+    static let privacyPolicyURLString = "https://tidbit.app/privacy"
+    /// Support / feedback email. Replace with a monitored address before release.
+    static let feedbackEmail = "tidbit@app.com"
+    
+    static var feedbackMailtoURL: URL? {
+        let subject = "Tidbit Feedback".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        return URL(string: "mailto:\(feedbackEmail)?subject=\(subject)")
+    }
+}
 
 struct ProfileView: View {
     @Environment(\.modelContext) private var modelContext
@@ -127,17 +144,21 @@ struct ProfileView: View {
                             .tracking(0.5)
                         
                         VStack(spacing: 0) {
-                            AboutRow(label: "Version", value: "1.0.0")
+                            AboutRow(label: "Version", value: appVersionString)
                             
                             Divider()
                                 .background(DesignSystem.parchment3)
                             
-                            AboutRow(label: "Feedback", value: "tidbit@app.com")
+                            AboutLinkRow(label: "Feedback", value: AppLinks.feedbackEmail) {
+                                openFeedback()
+                            }
                             
                             Divider()
                                 .background(DesignSystem.parchment3)
                             
-                            AboutRow(label: "Privacy Policy", value: nil)
+                            AboutLinkRow(label: "Privacy Policy") {
+                                openPrivacyPolicy()
+                            }
                         }
                         .background(DesignSystem.card)
                         .cornerRadius(DesignSystem.radiusSm)
@@ -191,6 +212,25 @@ struct ProfileView: View {
             // Streak broken
             dailyStreak = 0
         }
+    }
+    
+    // MARK: - About
+    
+    private var appVersionString: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = info?["CFBundleVersion"] as? String ?? "1"
+        return "\(version) (\(build))"
+    }
+    
+    private func openFeedback() {
+        guard let url = AppLinks.feedbackMailtoURL else { return }
+        UIApplication.shared.open(url)
+    }
+    
+    private func openPrivacyPolicy() {
+        guard let url = URL(string: AppLinks.privacyPolicyURLString) else { return }
+        UIApplication.shared.open(url)
     }
 }
 
@@ -425,13 +465,40 @@ struct AboutRow: View {
                     .font(.custom("DM Sans", size: 13))
                     .foregroundColor(DesignSystem.ink3)
             }
-            
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12))
-                .foregroundColor(DesignSystem.ink4)
         }
         .padding(.vertical, 14)
         .padding(.horizontal, 16)
+    }
+}
+
+struct AboutLinkRow: View {
+    let label: String
+    var value: String? = nil
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Text(label)
+                    .font(.custom("DM Sans", size: 14))
+                    .foregroundColor(DesignSystem.ink)
+                
+                Spacer()
+                
+                if let value = value {
+                    Text(value)
+                        .font(.custom("DM Sans", size: 13))
+                        .foregroundColor(DesignSystem.ink3)
+                }
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12))
+                    .foregroundColor(DesignSystem.ink4)
+            }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+        }
+        .buttonStyle(.plain)
     }
 }
 

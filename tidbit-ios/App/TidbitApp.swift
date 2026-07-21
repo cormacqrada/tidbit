@@ -8,25 +8,47 @@ struct TidbitApp: App {
     let modelContainer: ModelContainer
     
     init() {
+        modelContainer = Self.makeContainer()
+    }
+    
+    /// Build the SwiftData container. If the on-disk store can't be opened
+    /// (e.g. a schema change shipped without a migration plan), we never
+    /// silently destroy user data: the unreadable store is moved to a
+    /// timestamped backup folder and a fresh store is created so the app
+    /// still launches. Recover the backup from Application Support/backups.
+    private static func makeContainer() -> ModelContainer {
         do {
-            modelContainer = try ModelContainer(
+            return try ModelContainer(
                 for: Lesson.self, Tidbit.self, LearnerState.self,
                 configurations: ModelConfiguration()
             )
         } catch {
-            // Schema migration failed (e.g. new required fields added to @Model).
-            // During active development, reset the store and retry with a fresh schema.
-            Self.deleteStore()
-            modelContainer = try! ModelContainer(
+            #if DEBUG
+            print("[Tidbit] ModelContainer init failed: \(error). Rebuilding store.")
+            #else
+            print("[Tidbit] ModelContainer init failed: \(error). Quarantining unreadable store.")
+            #endif
+            quarantineStore()
+            // A fresh empty store should always succeed; if even this fails the
+            // app genuinely cannot function, so a fatal error is appropriate.
+            return try! ModelContainer(
                 for: Lesson.self, Tidbit.self, LearnerState.self,
                 configurations: ModelConfiguration()
             )
         }
     }
     
-    /// Delete the on-disk SwiftData store files so a fresh schema can be created.
-    private static func deleteStore() {
-        let storeURL = URL.applicationSupportDirectory.appending(path: "default.store")
+    /// Move the on-disk SwiftData store aside into a timestamped `backups/`
+    /// folder so it can be recovered, instead of deleting it.
+    private static func quarantineStore() {
+        let fm = FileManager.default
+        let supportDir = URL.applicationSupportDirectory
+        try? fm.createDirectory(at: supportDir, withIntermediateDirectories: true)
+        let storeURL = supportDir.appending(path: "default.store")
+        let backupDir = supportDir.appending(path: "backups")
+        try? fm.createDirectory(at: backupDir, withIntermediateDirectories: true)
+        let stamp = Self.backupTimestamp()
+        
         // SQLite companion files use hyphen separators: default.store-wal, default.store-shm
         let variants = [
             storeURL,
@@ -34,8 +56,23 @@ struct TidbitApp: App {
             URL(fileURLWithPath: storeURL.path() + "-shm")
         ]
         for url in variants {
-            try? FileManager.default.removeItem(at: url)
+            guard fm.fileExists(atPath: url.path) else { continue }
+            let dest = backupDir.appending(path: url.lastPathComponent + "-" + stamp)
+            try? fm.removeItem(at: dest)
+            do {
+                try fm.moveItem(at: url, to: dest)
+            } catch {
+                // Can't move (e.g. locked) — remove so the fresh store can be created.
+                try? fm.removeItem(at: url)
+            }
         }
+    }
+    
+    private static func backupTimestamp() -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.string(from: Date())
+            .replacingOccurrences(of: ":", with: "-")
     }
     
     var body: some Scene {
