@@ -15,6 +15,8 @@ struct EncodingExerciseView: View {
     @State private var freeText: String = ""
     @State private var decodeAnswer: String = ""
     @State private var revealedDecode: Bool = false
+    @State private var revealedFill: Bool = false
+    @State private var lociCue: String = ""
 
     private var type: ExerciseType { exercise.exerciseType }
     private var artifacts: EncodingArtifacts { exercise.tidbit.encodingArtifacts }
@@ -57,14 +59,19 @@ struct EncodingExerciseView: View {
 
             Spacer(minLength: 8)
 
-            // Free-text inputs (connect_to_prior / find_your_case)
-            if type == .connectToPrior || type == .findYourCase {
+            // Free-text inputs (connect_to_prior / find_your_case / story_gap / loci_recall)
+            if type == .connectToPrior || type == .findYourCase || type == .storyGap || type == .lociRecall {
                 freeTextEditor
             }
 
             // Mnemonic decode: small answer field
             if type == .mnemonicDecode {
                 decodeField
+            }
+            
+            // Reveal for fill-and-reveal encoding types
+            if revealedFill, type == .storyGap || type == .lociRecall {
+                revealCard
             }
 
             // Acknowledge / advance button (never scored)
@@ -85,6 +92,8 @@ struct EncodingExerciseView: View {
             freeText = ""
             decodeAnswer = ""
             revealedDecode = false
+            revealedFill = false
+            lociCue = ""
             prepareForType()
         }
     }
@@ -110,8 +119,96 @@ struct EncodingExerciseView: View {
             promptCard(prompt: "What does this remind you of? Connect it to something you already know.")
         case .findYourCase:
             promptCard(prompt: "Think of a real example from your own life where this applies.")
+        case .storyRead:
+            artifactCard(title: "Story", body: artifacts.story ?? placeholder("Story"), symbol: "book")
+        case .storyGap:
+            storyGapContent
+        case .lociRead:
+            artifactCard(title: "Memory palace", body: artifacts.palace ?? placeholder("Memory palace"), symbol: "mappin.and.ellipse")
+        case .lociRecall:
+            lociRecallContent
         default:
             EmptyView()
+        }
+    }
+    
+    /// Story with the final action blanked; user fills, then reveals the full story.
+    private var storyGapContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Story (one action missing):")
+                .font(.custom("DM Sans", size: 11))
+                .foregroundColor(DesignSystem.ink3)
+                .textCase(.uppercase)
+            Text(gappedStory.display)
+                .font(DesignSystem.serif(size: 17))
+                .foregroundColor(DesignSystem.ink)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .background(DesignSystem.parchment2)
+                .cornerRadius(DesignSystem.radius)
+            Text("What\u{2019}s the missing action?")
+                .font(.custom("DM Sans", size: 13))
+                .foregroundColor(DesignSystem.ink3)
+        }
+    }
+    
+    /// Memory-palace recall: name the concept that sits at a given spatial cue.
+    private var lociRecallContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Palace journey:")
+                .font(.custom("DM Sans", size: 11))
+                .foregroundColor(DesignSystem.ink3)
+                .textCase(.uppercase)
+            Text(artifacts.palace ?? placeholder("Memory palace"))
+                .font(DesignSystem.serif(size: 16))
+                .foregroundColor(DesignSystem.ink)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .background(DesignSystem.parchment2)
+                .cornerRadius(DesignSystem.radius)
+            Text("What concept sits at \u{201C}\(lociCue)\u{201D}?")
+                .font(.custom("DM Sans", size: 13))
+                .foregroundColor(DesignSystem.ink3)
+        }
+    }
+    
+    /// Revealed answer for story_gap / loci_recall.
+    private var revealCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Revealed:")
+                .font(.custom("DM Sans", size: 11))
+                .foregroundColor(DesignSystem.ink3)
+                .textCase(.uppercase)
+            Text(revealText)
+                .font(DesignSystem.serif(size: 15))
+                .italic()
+                .foregroundColor(DesignSystem.ink2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(DesignSystem.card)
+                .cornerRadius(DesignSystem.radiusSm)
+        }
+    }
+    
+    /// Split the story into sentences and blank the last one for story_gap.
+    private var gappedStory: (display: String, answer: String) {
+        let story = artifacts.story ?? placeholder("Story")
+        let sentences = story.components(separatedBy: CharacterSet(charactersIn: ".!?"))
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        guard let last = sentences.last, sentences.count > 1 else {
+            return (story, story)
+        }
+        let prefix = sentences.dropLast().joined(separator: ". ")
+        return ("\(prefix)…  _____", last)
+    }
+    
+    /// Text shown in the reveal card after a fill-and-reveal encoding exercise.
+    private var revealText: String {
+        switch type {
+        case .storyGap: return gappedStory.answer
+        case .lociRecall: return "\(exercise.tidbit.concept) — \(exercise.tidbit.body)"
+        default: return ""
         }
     }
 
@@ -281,6 +378,12 @@ struct EncodingExerciseView: View {
             tidbit.encodingArtifacts = updated
         }
 
+        // For fill-and-reveal types, first tap reveals; second tap (when revealed) advances.
+        if (type == .storyGap || type == .lociRecall) && !revealedFill {
+            revealedFill = true
+            return
+        }
+
         // Record encoding exposure (does not touch successRate/nextDue/phase)
         viewModel.recordEncodingExposure(for: exercise)
 
@@ -288,8 +391,12 @@ struct EncodingExerciseView: View {
     }
 
     private func prepareForType() {
-        if type == .mnemonicDecode || type == .imageToConcept {
-            // These ask the user to retrieve; nothing to pre-fill.
+        // Pick a spatial cue for loci_recall from the tidbit's example/simple-meaning,
+        // or fall back to a generic room name.
+        if type == .lociRecall {
+            lociCue = exercise.tidbit.examples.first
+                ?? exercise.tidbit.simpleMeaning
+                ?? "the kitchen"
         }
     }
 
@@ -303,6 +410,10 @@ struct EncodingExerciseView: View {
         case .chunkedRead: "Learn the chunks"
         case .connectToPrior: "Connect to prior knowledge"
         case .findYourCase: "Find your own case"
+        case .storyRead: "Read the story"
+        case .storyGap: "Fill the story gap"
+        case .lociRead: "Read the memory palace"
+        case .lociRecall: "Recall from the palace"
         default: type.displayName
         }
     }
@@ -311,6 +422,7 @@ struct EncodingExerciseView: View {
         switch type {
         case .connectToPrior, .findYourCase: "Save & continue"
         case .mnemonicDecode, .imageToConcept: "Reveal & continue"
+        case .storyGap, .lociRecall: revealedFill ? "Continue" : "Reveal & continue"
         default: "Got it"
         }
     }

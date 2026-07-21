@@ -618,7 +618,8 @@ struct ExerciseContentView: View {
             case .evidenceFor:
                 EvidenceForExerciseView(exercise: exercise, viewModel: viewModel, showDrawer: showDrawer)
             case .mnemonicLearn, .mnemonicDecode, .imageAnchorRead, .imageToConcept,
-                 .analogyRead, .chunkedRead, .connectToPrior, .findYourCase:
+                 .analogyRead, .chunkedRead, .connectToPrior, .findYourCase,
+                 .storyRead, .storyGap, .lociRead, .lociRecall:
                 EncodingExerciseView(exercise: exercise, viewModel: viewModel, showDrawer: showDrawer)
             }
         }
@@ -1143,6 +1144,8 @@ struct ExerciseIcon: View {
         case .chunkedRead: return "square.grid.2x2"
         case .connectToPrior: return "link.circle"
         case .findYourCase: return "mappin.and.ellipse"
+        case .storyRead, .storyGap: return "book"
+        case .lociRead, .lociRecall: return "mappin.and.ellipse"
         }
     }
     

@@ -302,8 +302,9 @@ class SessionViewModel {
         switch type {
         // Encoding first (build the trace before testing it)
         case .chunkedRead: return 0
-        case .mnemonicLearn, .imageAnchorRead, .analogyRead: return 1
-        case .mnemonicDecode, .imageToConcept, .connectToPrior, .findYourCase: return 2
+        case .mnemonicLearn, .imageAnchorRead, .analogyRead, .storyRead, .lociRead: return 1
+        case .mnemonicDecode, .imageToConcept, .connectToPrior, .findYourCase,
+             .storyGap, .lociRecall: return 2
         // Recall — lower cognitive demand first
         case .fillBlank, .wordFill: return 3
         case .linePrompt: return 4

@@ -170,11 +170,16 @@ enum ExerciseType: String, Codable, CaseIterable {
     case chunkedRead = "chunked_read"
     case connectToPrior = "connect_to_prior"
     case findYourCase = "find_your_case"
+    case storyRead = "story_read"
+    case storyGap = "story_gap"
+    case lociRead = "loci_read"
+    case lociRecall = "loci_recall"
     
     var mode: ExerciseMode {
         switch self {
         case .mnemonicLearn, .mnemonicDecode, .imageAnchorRead, .imageToConcept,
-             .analogyRead, .chunkedRead, .connectToPrior, .findYourCase:
+             .analogyRead, .chunkedRead, .connectToPrior, .findYourCase,
+             .storyRead, .storyGap, .lociRead, .lociRecall:
             return .encoding
         default:
             return .recall
@@ -205,6 +210,10 @@ enum ExerciseType: String, Codable, CaseIterable {
         case .chunkedRead: "Chunked overview"
         case .connectToPrior: "Connect to prior"
         case .findYourCase: "Find your case"
+        case .storyRead: "Read the story"
+        case .storyGap: "Story gap fill"
+        case .lociRead: "Memory palace"
+        case .lociRecall: "Palace recall"
         }
     }
     
@@ -246,6 +255,10 @@ enum ExerciseType: String, Codable, CaseIterable {
         case .chunkedRead: "Learn the chunk labels first"
         case .connectToPrior: "What does this remind you of?"
         case .findYourCase: "Supply your own real example"
+        case .storyRead: "Read the narrative of the content"
+        case .storyGap: "Fill the missing action in the story"
+        case .lociRead: "Visualize the memory palace journey"
+        case .lociRecall: "What sits at this spot in the palace?"
         }
     }
     
@@ -283,21 +296,21 @@ enum ExerciseType: String, Codable, CaseIterable {
     static func encodingExercises(for domain: KnowledgeDomain) -> [ExerciseType] {
         switch domain {
         case .word:
-            return [.chunkedRead, .mnemonicLearn, .mnemonicDecode, .imageAnchorRead, .imageToConcept, .connectToPrior]
+            return [.chunkedRead, .mnemonicLearn, .mnemonicDecode, .imageAnchorRead, .imageToConcept, .storyRead, .lociRead, .lociRecall, .connectToPrior]
         case .concept:
-            return [.imageAnchorRead, .imageToConcept, .analogyRead, .chunkedRead, .connectToPrior, .findYourCase, .mnemonicLearn, .mnemonicDecode]
+            return [.imageAnchorRead, .imageToConcept, .analogyRead, .chunkedRead, .lociRead, .lociRecall, .connectToPrior, .findYourCase, .mnemonicLearn, .mnemonicDecode]
         case .thesis:
-            return [.chunkedRead, .analogyRead, .connectToPrior]
+            return [.chunkedRead, .analogyRead, .storyRead, .connectToPrior]
         case .plot:
-            return [.chunkedRead, .imageAnchorRead, .connectToPrior, .findYourCase]
+            return [.chunkedRead, .storyRead, .storyGap, .imageAnchorRead, .connectToPrior, .findYourCase]
         case .system:
-            return [.analogyRead, .chunkedRead, .imageAnchorRead, .connectToPrior]
+            return [.analogyRead, .storyRead, .chunkedRead, .imageAnchorRead, .connectToPrior]
         case .procedure:
-            return [.chunkedRead, .mnemonicLearn, .mnemonicDecode]
+            return [.chunkedRead, .mnemonicLearn, .mnemonicDecode, .storyRead]
         case .strategic:
             return [.analogyRead, .connectToPrior, .findYourCase]
         case .spatial:
-            return [.imageAnchorRead]
+            return [.imageAnchorRead, .lociRead, .lociRecall]
         }
     }
     
