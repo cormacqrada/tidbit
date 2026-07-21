@@ -155,7 +155,7 @@ struct WordFillExerciseView: View {
         var blankIndex = 0
         
         for word in words {
-            if blanks.contains(where: { $0.word == word.trimmingCharacters(in: .punctuation) }) {
+            if blanks.contains(where: { $0.word == word.trimmingCharacters(in: .punctuationCharacters) }) {
                 let filledWord = selectedWords[safe: blankIndex] ?? "_____"
                 result.append(filledWord.map { word.hasSuffix(",") ? $0 + "," : $0 } ?? "_____")
                 blankIndex += 1
@@ -169,10 +169,12 @@ struct WordFillExerciseView: View {
     
     private func colorForBlank(at index: Int) -> Color {
         guard hasSubmitted else { return DesignSystem.accent }
-        guard let selected = selectedWords[safe: index],
-              let blank = blanks[safe: index] else { return DesignSystem.red }
+        guard index < selectedWords.count,
+              index < blanks.count,
+              let selected = selectedWords[index] else { return DesignSystem.red }
+        let blank = blanks[index]
         
-        let normalizedSelected = selected.trimmingCharacters(in: .punctuation).lowercased()
+        let normalizedSelected = selected.trimmingCharacters(in: .punctuationCharacters).lowercased()
         let normalizedBlank = blank.word.lowercased()
         
         return normalizedSelected == normalizedBlank ? DesignSystem.green : DesignSystem.red
@@ -180,7 +182,7 @@ struct WordFillExerciseView: View {
     
     private func prepareBlanks() {
         let words = exercise.tidbit.body.components(separatedBy: " ")
-        let cleanWords = words.map { $0.trimmingCharacters(in: .punctuation) }
+        let cleanWords = words.map { $0.trimmingCharacters(in: .punctuationCharacters) }
         
         // Select 2-3 significant words to blank out
         // Prefer longer words (>4 chars) and avoid common words
@@ -195,30 +197,41 @@ struct WordFillExerciseView: View {
         let selectedIndices = Array(significantIndices.shuffled().prefix(blankCount)).sorted()
         
         blanks = selectedIndices.map { index in
-            BlankWord(word: cleanWords[index], index: index)
+            BlankWord(word: cleanWords[index], index: index, partOfSpeech: PartOfSpeech.classify(cleanWords[index]))
         }
         
         // Create available words with distractors
         var wordPool = blanks.map { $0.word }
         
-        // Add distractors from other lines in lesson
+        // Add distractors matching part of speech
         if let session = viewModel.session {
-            let otherTidbits = session.exerciseQueue
-                .map { $0.tidbit }
-                .filter { $0.id != exercise.tidbit.id }
+            let allWords = session.exerciseQueue
+                .flatMap { $0.tidbit.body.components(separatedBy: " ") }
+                .map { $0.trimmingCharacters(in: .punctuationCharacters) }
+                .filter { $0.count > 4 && !commonWords.contains($0.lowercased()) }
             
-            let distractorWords = otherTidbits.flatMap { tidbit in
-                tidbit.body.components(separatedBy: " ")
-                    .map { $0.trimmingCharacters(in: .punctuation) }
-                    .filter { $0.count > 4 && !commonWords.contains($0.lowercased()) }
+            // Get unique words with their parts of speech
+            var distractorsByPOS: [PartOfSpeech: [String]] = [:]
+            for word in Set(allWords) {
+                let pos = PartOfSpeech.classify(word)
+                if pos != .other {
+                    distractorsByPOS[pos, default: []].append(word)
+                }
             }
-            .shuffled()
-            .prefix(4)
             
-            wordPool.append(contentsOf: distractorWords)
+            // For each blank, find distractors of same part of speech
+            for blank in blanks {
+                if let sameTypeWords = distractorsByPOS[blank.partOfSpeech] {
+                    let distractors = sameTypeWords
+                        .filter { $0 != blank.word }
+                        .shuffled()
+                        .prefix(2)
+                    wordPool.append(contentsOf: distractors)
+                }
+            }
         }
         
-        availableWords = wordPool.shuffled()
+        availableWords = Array(Set(wordPool)).shuffled()
         selectedWords = Array(repeating: nil, count: blanks.count)
     }
     
@@ -238,8 +251,10 @@ struct WordFillExerciseView: View {
     
     private func submitAnswer() {
         hasSubmitted = true
+        // Score against the correct blank words in order (not the whole body).
+        let correct = blanks.map { $0.word }.joined(separator: " ")
         viewModel.userInput = selectedWords.compactMap { $0 }.joined(separator: " ")
-        viewModel.submitAnswer()
+        viewModel.submitAnswer(correctAnswer: correct)
     }
 }
 
@@ -249,6 +264,7 @@ struct BlankWord: Identifiable {
     let id = UUID()
     let word: String
     let index: Int
+    let partOfSpeech: PartOfSpeech
 }
 
 // MARK: - Flow Layout

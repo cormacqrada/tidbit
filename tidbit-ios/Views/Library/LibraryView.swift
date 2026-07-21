@@ -455,63 +455,36 @@ struct LessonDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var selectedTidbit: Tidbit?
     @State private var showingQuickAdd = false
+    @State private var mode: DetailMode = .tidbits
+    
+    enum DetailMode: String, CaseIterable {
+        case tidbits
+        case source
+        var label: String {
+            self == .tidbits ? "Tidbits" : "Source"
+        }
+    }
     
     var body: some View {
         NavigationStack {
-            List {
-                // Lesson info section
-                Section {
-                    HStack {
-                        Text("Content Type")
-                        Spacer()
-                        Text(lesson.contentType.displayName)
-                            .foregroundColor(DesignSystem.ink3)
+            VStack(spacing: 0) {
+                // Mode switcher
+                Picker("View", selection: $mode) {
+                    ForEach(DetailMode.allCases, id: \.self) { m in
+                        Text(m.label).tag(m)
                     }
-                    
-                    HStack {
-                        Text("Knowledge Domain")
-                        Spacer()
-                        Text(lesson.primaryKnowledgeDomain.displayName)
-                            .foregroundColor(DesignSystem.ink3)
-                    }
-                    
-                    HStack {
-                        Text("Learning Goal")
-                        Spacer()
-                        Text(lesson.learningGoal.displayName)
-                            .foregroundColor(DesignSystem.ink3)
-                    }
-                    
-                    HStack {
-                        Text("Session Length")
-                        Spacer()
-                        Text("\(lesson.sessionLength) min")
-                            .foregroundColor(DesignSystem.ink3)
-                    }
-                    
-                    HStack {
-                        Text("Created")
-                        Spacer()
-                        Text(lesson.createdAt.formatted(date: .abbreviated, time: .omitted))
-                            .foregroundColor(DesignSystem.ink3)
-                    }
-                } header: {
-                    Text("Configuration")
                 }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
                 
-                // Tidbits section
-                Section {
-                    ForEach(lesson.tidbits.sorted(by: { $0.sequenceIndex < $1.sequenceIndex })) { tidbit in
-                        TidbitRow(tidbit: tidbit)
-                            .onTapGesture {
-                                selectedTidbit = tidbit
-                            }
-                    }
-                } header: {
-                    Text("Tidbits (\(lesson.tidbits.count))")
+                switch mode {
+                case .tidbits:
+                    tidbitsList
+                case .source:
+                    sourceView
                 }
             }
-            .listStyle(.insetGrouped)
             .navigationTitle(lesson.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -521,6 +494,7 @@ struct LessonDetailView: View {
                     } label: {
                         Image(systemName: "plus")
                     }
+                    .opacity(mode == .tidbits ? 1 : 0)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
@@ -535,6 +509,88 @@ struct LessonDetailView: View {
                 QuickAddTidbitSheet(lesson: lesson)
             }
         }
+    }
+    
+    private var tidbitsList: some View {
+        List {
+            // Lesson info section
+            Section {
+                HStack {
+                    Text("Content Type")
+                    Spacer()
+                    Text(lesson.contentType.displayName)
+                        .foregroundColor(DesignSystem.ink3)
+                }
+                
+                HStack {
+                    Text("Knowledge Domain")
+                    Spacer()
+                    Text(lesson.primaryKnowledgeDomain.displayName)
+                        .foregroundColor(DesignSystem.ink3)
+                }
+                
+                HStack {
+                    Text("Learning Goal")
+                    Spacer()
+                    Text(lesson.learningGoal.displayName)
+                        .foregroundColor(DesignSystem.ink3)
+                }
+                
+                HStack {
+                    Text("Session Length")
+                    Spacer()
+                    Text("\(lesson.sessionLength) min")
+                        .foregroundColor(DesignSystem.ink3)
+                }
+                
+                HStack {
+                    Text("Created")
+                    Spacer()
+                    Text(lesson.createdAt.formatted(date: .abbreviated, time: .omitted))
+                        .foregroundColor(DesignSystem.ink3)
+                }
+            } header: {
+                Text("Configuration")
+            }
+            
+            // Tidbits section
+            Section {
+                ForEach(lesson.tidbits.sorted(by: { $0.sequenceIndex < $1.sequenceIndex })) { tidbit in
+                    TidbitRow(tidbit: tidbit)
+                        .onTapGesture {
+                            selectedTidbit = tidbit
+                        }
+                }
+            } header: {
+                Text("Tidbits (\(lesson.tidbits.count))")
+            }
+        }
+        .listStyle(.insetGrouped)
+    }
+    
+    /// Source mode: read the whole original text the lesson was built from.
+    private var sourceView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                if let sourceText = lesson.sourceText, !sourceText.isEmpty {
+                    Text(sourceText)
+                        .font(DesignSystem.serif(size: 16))
+                        .foregroundColor(DesignSystem.ink)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                } else if let url = lesson.sourceUrl {
+                    Link(url, destination: URL(string: url) ?? URL(string: "https://example.com")!)
+                        .font(.custom("DM Sans", size: 14))
+                        .foregroundColor(DesignSystem.accent)
+                } else {
+                    Text("No source text saved with this lesson.")
+                        .font(.custom("DM Sans", size: 14))
+                        .foregroundColor(DesignSystem.ink3)
+                }
+            }
+            .padding(20)
+        }
+        .background(DesignSystem.parchment)
     }
 }
 

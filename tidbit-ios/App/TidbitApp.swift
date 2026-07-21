@@ -294,7 +294,7 @@ struct LessonCardView: View {
                     
                     Spacer()
                     
-                    Text("\(activeExerciseCount) exercises")
+                    Text("\(lesson.tidbits.count) tidbits")
                 }
                 .font(.custom("DM Sans", size: 12))
                 .foregroundColor(DesignSystem.ink3)
@@ -354,11 +354,6 @@ struct LessonCardView: View {
         .onTapGesture {
             DesignSystem.Haptics.light()
         }
-    }
-    
-    /// Count of active (non-zero weight) exercises in the mix
-    private var activeExerciseCount: Int {
-        lesson.exerciseMix.filter { $0.weight > 0 }.count
     }
     
     private func deleteLesson() {

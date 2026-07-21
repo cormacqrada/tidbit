@@ -253,14 +253,16 @@ class CreateLessonViewModel {
             hintPolicy: hintPolicy,
             modality: modality,
             exerciseMix: exerciseMix,
-            sourceText: pastedText,
+            sourceText: ingestionResult?.text ?? pastedText,
             sourceUrl: sourceTab == .url ? urlInput : nil
         )
         
-        // Generate tidbits from source text
+        // Generate tidbits from the source text. For URL sources the content lives
+        // in ingestionResult.text (pastedText is empty), so prefer the fetched text.
+        let sourceText = ingestionResult?.text ?? pastedText
         let structure = ingestionResult?.sourceStructure ?? .prose
         let tidbits = TidbitGenerator.generate(
-            from: pastedText,
+            from: sourceText,
             contentType: contentType,
             sourceStructure: structure,
             primaryDomain: primaryDomain,
@@ -603,8 +605,18 @@ enum TidbitGenerator {
             let trimmed = paragraph.trimmingCharacters(in: .whitespaces)
             guard !trimmed.isEmpty else { continue }
             
+            // Derive a meaningful concept name. For a single-block paste (the common
+            // concept/definition case), use a "Title: rest" split or the first sentence
+            // rather than the generic "Paragraph 1".
+            let conceptName: String
+            if paragraphs.count == 1 {
+                conceptName = deriveConceptName(for: trimmed)
+            } else {
+                conceptName = "Paragraph \(index + 1)"
+            }
+            
             let tidbit = Tidbit(
-                concept: "Paragraph \(index + 1)",
+                concept: conceptName,
                 body: trimmed,
                 sequenceIndex: index,
                 sourceTitle: sourceTitle,
@@ -616,6 +628,26 @@ enum TidbitGenerator {
         }
         
         return tidbits
+    }
+    
+    /// Derive a concept name from a single block of text: prefer the text before
+    /// the first colon ("Goodhart's Law: ..."), else the first sentence, else a prefix.
+    private static func deriveConceptName(for text: String) -> String {
+        if let colonRange = text.range(of: ":") {
+            let before = text[..<colonRange.lowerBound].trimmingCharacters(in: .whitespaces)
+            if !before.isEmpty && before.count <= 60 {
+                return String(before)
+            }
+        }
+        // First sentence
+        let firstSentence = text.components(separatedBy: CharacterSet(charactersIn: ".!?")).first ?? text
+        let trimmed = firstSentence.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty && trimmed.count <= 80 {
+            return trimmed
+        }
+        // Fallback: first 8 words
+        let words = text.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        return words.prefix(8).joined(separator: " ")
     }
     
     // MARK: - Faceted Tidbit Generator

@@ -256,7 +256,21 @@ class SessionViewModel {
     ) -> [ExerciseInstance] {
         var exercises: [ExerciseInstance] = []
         
-        // For each tidbit, create exercises based on weights
+        // Encoding layer: one encoding exercise per tidbit (rotating through the
+        // domain's eligible encoding techniques). Builds the memory trace before recall.
+        // Non-scored — these emit exposure telemetry only.
+        for tidbit in tidbits {
+            let encodingTypes = ExerciseType.encodingExercises(for: tidbit.knowledgeDomain)
+            if let type = encodingTypes.randomElement() {
+                exercises.append(ExerciseInstance(
+                    tidbit: tidbit,
+                    exerciseType: type,
+                    config: config
+                ))
+            }
+        }
+        
+        // Recall layer: scored exercises based on the lesson's exercise mix weights
         for tidbit in tidbits {
             for weight in exerciseMix {
                 // Skip AI-requiring exercises for free tier
@@ -278,7 +292,7 @@ class SessionViewModel {
             }
         }
         
-        // Sort by cognitive demand (easier first)
+        // Sort by cognitive demand (encoding first, then easier recall)
         exercises.sort { exerciseTypeOrder($0.exerciseType) < exerciseTypeOrder($1.exerciseType) }
         
         return exercises
@@ -563,8 +577,9 @@ class SessionViewModel {
     // MARK: - Helpers
     
     func getCorrectAnswer(for exercise: ExerciseInstance) -> String {
-        // For fillBlank, use the stored correct answer if available
-        if exercise.exerciseType == .fillBlank || exercise.exerciseType == .wordFill {
+        // For fillBlank (single blank), use the stored correct answer if available.
+        // wordFill manages its own multi-blank scoring via an explicit override.
+        if exercise.exerciseType == .fillBlank {
             if let storedAnswer = exercise.config.correctAnswer {
                 return storedAnswer
             }
@@ -601,10 +616,11 @@ class SessionViewModel {
     
     // MARK: - FillBlank Setup
     
-    /// Prepare fillBlank exercise data - called when exercise changes
+    /// Prepare fillBlank exercise data - called when exercise changes.
+    /// Only single-blank fillBlank; wordFill prepares its own multi-blank state onAppear.
     func prepareFillBlankData() {
         guard let exercise = session?.currentExercise else { return }
-        guard exercise.exerciseType == .fillBlank || exercise.exerciseType == .wordFill else { return }
+        guard exercise.exerciseType == .fillBlank else { return }
         
         let line = exercise.tidbit.body
         let words = line.components(separatedBy: " ")
