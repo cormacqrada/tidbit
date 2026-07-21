@@ -505,11 +505,14 @@ struct ProgressPipRow: View {
     }
     
     var body: some View {
-        HStack(spacing: 3) {
+        // Cap spacing so a long encoding+recall queue still renders a visible bar.
+        let spacing: CGFloat = total > 20 ? 1.5 : (total > 12 ? 2 : 3)
+        return HStack(spacing: spacing) {
             ForEach(0..<total, id: \.self) { index in
                 pip(for: index)
             }
         }
+        .frame(height: 4)
     }
     
     @ViewBuilder
@@ -517,13 +520,18 @@ struct ProgressPipRow: View {
         let state = pipState(for: index)
         RoundedRectangle(cornerRadius: 1.5)
             .fill(pipColor(for: state))
-            .frame(height: 3)
+            .frame(height: 4)
     }
     
     private func pipState(for index: Int) -> PipState {
         // Check if this exercise has been completed (based on position in array)
         if index < completedExercises.count {
-            let score = completedExercises[index].score
+            let completed = completedExercises[index]
+            // Encoding exercises are non-scored: show as a muted "seen" pip, not todo.
+            if completed.exerciseType.mode == .encoding {
+                return .doneNeutral
+            }
+            let score = completed.score
             // score 0 means skipped/not answered
             if score == 0 {
                 return .todo  // Show as neutral, not wrong
@@ -540,6 +548,7 @@ struct ProgressPipRow: View {
         switch state {
         case .doneCorrect: return DesignSystem.green
         case .doneWrong: return DesignSystem.red
+        case .doneNeutral: return DesignSystem.ink4  // seen but ungraded (encoding)
         case .current: return DesignSystem.accentMid
         case .todo: return DesignSystem.parchment3
         }
@@ -547,7 +556,7 @@ struct ProgressPipRow: View {
 }
 
 enum PipState {
-    case doneCorrect, doneWrong, current, todo
+    case doneCorrect, doneWrong, doneNeutral, current, todo
 }
 
 // MARK: - Context Info Helper

@@ -455,20 +455,26 @@ struct LessonDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var selectedTidbit: Tidbit?
     @State private var showingQuickAdd = false
-    @State private var mode: DetailMode = .tidbits
+    @State private var mode: DetailMode = .review
+    @State private var encodeTarget: Tidbit?
     
     enum DetailMode: String, CaseIterable {
-        case tidbits
+        case encode
+        case review
         case source
         var label: String {
-            self == .tidbits ? "Tidbits" : "Source"
+            switch self {
+            case .encode: "Encode"
+            case .review: "Review"
+            case .source: "Source"
+            }
         }
     }
     
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Mode switcher
+                // Mode switcher: Encode | Review | Source
                 Picker("View", selection: $mode) {
                     ForEach(DetailMode.allCases, id: \.self) { m in
                         Text(m.label).tag(m)
@@ -479,7 +485,9 @@ struct LessonDetailView: View {
                 .padding(.vertical, 8)
                 
                 switch mode {
-                case .tidbits:
+                case .encode:
+                    encodeView
+                case .review:
                     tidbitsList
                 case .source:
                     sourceView
@@ -494,7 +502,7 @@ struct LessonDetailView: View {
                     } label: {
                         Image(systemName: "plus")
                     }
-                    .opacity(mode == .tidbits ? 1 : 0)
+                    .opacity(mode == .review ? 1 : 0)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
@@ -507,6 +515,10 @@ struct LessonDetailView: View {
             }
             .sheet(isPresented: $showingQuickAdd) {
                 QuickAddTidbitSheet(lesson: lesson)
+            }
+            .sheet(item: $encodeTarget) { tidbit in
+                EncodeThisSheet(tidbit: tidbit)
+                    .presentationDetents([.medium])
             }
         }
     }
@@ -591,6 +603,111 @@ struct LessonDetailView: View {
             .padding(20)
         }
         .background(DesignSystem.parchment)
+    }
+    
+    /// Encode mode: walk the lesson's tidbits and build memory aids (mnemonic,
+    /// image, analogy, story, palace) outside of a scored session. Each row shows
+    /// which aids already exist and offers an Encode button.
+    private var encodeView: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                Text("Build a memory aid for each tidbit. These feed the encoding exercises in your sessions.")
+                    .font(.custom("DM Sans", size: 13))
+                    .foregroundColor(DesignSystem.ink3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                
+                ForEach(lesson.tidbits.sorted(by: { $0.sequenceIndex < $1.sequenceIndex })) { tidbit in
+                    EncodeRow(tidbit: tidbit) {
+                        encodeTarget = tidbit
+                    }
+                    .onTapGesture {
+                        selectedTidbit = tidbit
+                    }
+                    .padding(.horizontal, 20)
+                }
+            }
+            .padding(.bottom, 24)
+        }
+        .background(DesignSystem.parchment)
+    }
+}
+
+// MARK: - Encode Row
+
+struct EncodeRow: View {
+    let tidbit: Tidbit
+    let onEncode: () -> Void
+    
+    private var artifacts: EncodingArtifacts { tidbit.encodingArtifacts }
+    
+    private var aidTags: [String] {
+        var tags: [String] = []
+        if artifacts.mnemonic != nil { tags.append("Mnemonic") }
+        if artifacts.imageDescription != nil { tags.append("Image") }
+        if artifacts.analogy != nil { tags.append("Analogy") }
+        if artifacts.story != nil { tags.append("Story") }
+        if artifacts.palace != nil { tags.append("Palace") }
+        if !artifacts.chunks.isEmpty { tags.append("Chunks") }
+        return tags
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(tidbit.concept)
+                    .font(DesignSystem.serif(size: 16))
+                    .foregroundColor(DesignSystem.ink)
+                    .lineLimit(1)
+                Spacer()
+                Button {
+                    onEncode()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "brain.head.profile")
+                        Text("Encode")
+                    }
+                    .font(.custom("DM Sans", size: 12).weight(.medium))
+                    .foregroundColor(DesignSystem.accent)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(DesignSystem.accentLight)
+                    .cornerRadius(DesignSystem.radiusSm)
+                }
+                .buttonStyle(.plain)
+            }
+            
+            Text(tidbit.body)
+                .font(.custom("DM Sans", size: 12))
+                .foregroundColor(DesignSystem.ink2)
+                .lineLimit(2)
+            
+            if aidTags.isEmpty {
+                Text("No aids yet")
+                    .font(.custom("DM Sans", size: 11))
+                    .foregroundColor(DesignSystem.ink4)
+            } else {
+                HStack(spacing: 6) {
+                    ForEach(aidTags, id: \.self) { tag in
+                        Text(tag)
+                            .font(.custom("DM Sans", size: 10).weight(.medium))
+                            .foregroundColor(DesignSystem.accent)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(DesignSystem.accentLight)
+                            .cornerRadius(10)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(DesignSystem.card)
+        .cornerRadius(DesignSystem.radius)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.radius)
+                .stroke(DesignSystem.parchment3, lineWidth: 1)
+        )
     }
 }
 

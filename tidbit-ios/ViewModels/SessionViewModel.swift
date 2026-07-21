@@ -450,6 +450,22 @@ class SessionViewModel {
         )
         TelemetryService.log(event: event)
         
+        // Record a non-scored completion so the progress pip row advances in lockstep
+        // with currentIndex. Without this, the encoding block (sorted first) leaves the
+        // progress bar frozen on .todo even as the current marker moves past it.
+        let completed = CompletedExercise(
+            exerciseId: exercise.id,
+            tidbitId: exercise.tidbit.id,
+            exerciseType: exercise.exerciseType,
+            score: 0,
+            responseTimeMs: 0,
+            hintUsed: false,
+            adaptiveSignal: .exposed,
+            timestamp: Date(),
+            userResponse: ""
+        )
+        session?.completedExercises.append(completed)
+        
         // Update encoding exposure counters on learner state (separate from recall scheduling)
         if let modelContext = self.modelContext {
             updateEncodingCounters(tidbitId: exercise.tidbit.id, technique: exercise.exerciseType.rawValue, modelContext: modelContext)
